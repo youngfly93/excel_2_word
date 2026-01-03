@@ -1,0 +1,38 @@
+# 肠癌358基因 Development Guidelines
+
+Auto-generated from all feature plans. Last updated: 2025-10-24
+
+**Constitution**: This file provides runtime guidance. All development must comply with project constitution at `.specify/memory/constitution.md`
+
+**Core Principles Quick Reference**:
+- ✅ Code Quality: Clean, documented, linter-compliant code
+- ✅ Testing: TDD, 80%+ coverage, comprehensive test suites
+- ✅ User Experience: Consistent, clear, error-tolerant interfaces
+- ✅ Performance: Meet defined benchmarks (file parsing < 5s, processing < 30s)
+- ✅ Observability: Structured logging, audit trails, version tracking
+
+## Active Technologies
+
+- Python 3.9+ (001-excel-docx-automation)
+
+## Project Structure
+
+```text
+src/
+tests/
+```
+
+## Commands
+
+cd src [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECHNOLOGIES] pytest [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECHNOLOGIES] ruff check .
+
+## Code Style
+
+Python 3.9+: Follow standard conventions
+
+## Recent Changes
+
+- 001-excel-docx-automation: Added Python 3.9+
+
+<!-- MANUAL ADDITIONS START -->
+<!-- MANUAL ADDITIONS END -->

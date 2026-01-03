@@ -1,0 +1,179 @@
+# 药物通用名-商品名映射配置
+# Version: 1.0.0
+# 用于在报告中显示药物商品名
+
+schema_version: "1.0"
+
+# 靶向治疗药物
+targeted_drugs:
+  # EGFR抑制剂
+  西妥昔单抗:
+    generic_en: "Cetuximab"
+    brands: ["Erbitux", "爱必妥"]
+    target: "EGFR"
+
+  帕尼单抗:
+    generic_en: "Panitumumab"
+    brands: ["Vectibix", "维克替比"]
+    target: "EGFR"
+
+  # BRAF抑制剂
+  维莫非尼:
+    generic_en: "Vemurafenib"
+    brands: ["Zelboraf", "佐博伏"]
+    target: "BRAF V600E"
+
+  达拉非尼:
+    generic_en: "Dabrafenib"
+    brands: ["Tafinlar", "泰菲乐"]
+    target: "BRAF V600"
+
+  康奈非尼:
+    generic_en: "Encorafenib"
+    brands: ["Braftovi", "康博替尼"]
+    target: "BRAF V600E"
+
+  # MEK抑制剂
+  曲美替尼:
+    generic_en: "Trametinib"
+    brands: ["Mekinist", "迈吉宁"]
+    target: "MEK1/2"
+
+  比美替尼:
+    generic_en: "Binimetinib"
+    brands: ["Mektovi", "美替维"]
+    target: "MEK1/2"
+
+  # HER2抑制剂
+  曲妥珠单抗:
+    generic_en: "Trastuzumab"
+    brands: ["Herceptin", "赫赛汀"]
+    target: "HER2"
+
+  帕妥珠单抗:
+    generic_en: "Pertuzumab"
+    brands: ["Perjeta", "帕捷特"]
+    target: "HER2"
+
+  德曲妥珠单抗:
+    generic_en: "Trastuzumab deruxtecan"
+    brands: ["Enhertu", "优赫得"]
+    target: "HER2"
+
+  # NTRK抑制剂
+  拉罗替尼:
+    generic_en: "Larotrectinib"
+    brands: ["Vitrakvi", "维特拉克"]
+    target: "NTRK1/2/3"
+
+  恩曲替尼:
+    generic_en: "Entrectinib"
+    brands: ["Rozlytrek", "罗圣全"]
+    target: "NTRK1/2/3, ROS1, ALK"
+
+  # PIK3CA抑制剂
+  阿培利司:
+    generic_en: "Alpelisib"
+    brands: ["Piqray", "碧康珠"]
+    target: "PIK3CA"
+
+  # mTOR抑制剂
+  依维莫司:
+    generic_en: "Everolimus"
+    brands: ["Afinitor", "飞尼妥"]
+    target: "mTOR"
+
+  # 多靶点抑制剂
+  瑞戈非尼:
+    generic_en: "Regorafenib"
+    brands: ["Stivarga", "拜万戈"]
+    target: "多靶点"
+
+  呋喹替尼:
+    generic_en: "Fruquintinib"
+    brands: ["Elunate", "爱优特"]
+    target: "VEGFR"
+
+# 免疫治疗药物
+immunotherapy_drugs:
+  帕博利珠单抗:
+    generic_en: "Pembrolizumab"
+    brands: ["Keytruda", "可瑞达"]
+    target: "PD-1"
+
+  纳武利尤单抗:
+    generic_en: "Nivolumab"
+    brands: ["Opdivo", "欧狄沃"]
+    target: "PD-1"
+
+  伊匹木单抗:
+    generic_en: "Ipilimumab"
+    brands: ["Yervoy", "逸沃"]
+    target: "CTLA-4"
+
+  阿替利珠单抗:
+    generic_en: "Atezolizumab"
+    brands: ["Tecentriq", "泰圣奇"]
+    target: "PD-L1"
+
+  度伐利尤单抗:
+    generic_en: "Durvalumab"
+    brands: ["Imfinzi", "英飞凡"]
+    target: "PD-L1"
+
+  信迪利单抗:
+    generic_en: "Sintilimab"
+    brands: ["Tyvyt", "达伯舒"]
+    target: "PD-1"
+
+  替雷利珠单抗:
+    generic_en: "Tislelizumab"
+    brands: ["Tevimbra", "百泽安"]
+    target: "PD-1"
+
+  卡瑞利珠单抗:
+    generic_en: "Camrelizumab"
+    brands: ["AiRuiKa", "艾瑞卡"]
+    target: "PD-1"
+
+  特瑞普利单抗:
+    generic_en: "Toripalimab"
+    brands: ["Tuoyi", "拓益"]
+    target: "PD-1"
+
+  斯鲁利单抗:
+    generic_en: "Serplulimab"
+    brands: ["Hengrui HLX10", "汉斯状"]
+    target: "PD-1"
+
+# 化疗药物
+chemotherapy_drugs:
+  奥沙利铂:
+    generic_en: "Oxaliplatin"
+    brands: ["Eloxatin", "乐沙定"]
+
+  伊立替康:
+    generic_en: "Irinotecan"
+    brands: ["Camptosar", "开普拓"]
+
+  氟尿嘧啶:
+    generic_en: "Fluorouracil"
+    brands: ["5-FU", "氟脲嘧啶"]
+
+  卡培他滨:
+    generic_en: "Capecitabine"
+    brands: ["Xeloda", "希罗达"]
+
+  曲氟尿苷替匹嘧啶:
+    generic_en: "Trifluridine/Tipiracil"
+    brands: ["Lonsurf", "朗斯弗"]
+
+# 元数据
+metadata:
+  version: "1.0.0"
+  created_date: "2025-12-31"
+  description: "结直肠癌靶向/免疫/化疗药物商品名映射"
+  sources:
+    - "NCCN结直肠癌指南2024"
+    - "CSCO结直肠癌诊疗指南2024"
+    - "FDA/NMPA药品批准信息"

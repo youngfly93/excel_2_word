@@ -1,0 +1,494 @@
+# Field Mapping Configuration Schema
+# Version: 1.0.0
+# Date: 2025-10-24
+
+# 本文件定义字段映射配置文件（mapping.yaml）的完整schema和示例
+
+# ============================================================================
+# SCHEMA DEFINITION
+# ============================================================================
+
+schema_version: "1.0"
+
+# 单值字段映射（从Excel单个单元格到模板变量）
+single_values:
+  # 每个字段的配置结构
+  <variable_name>:
+    synonyms:          # 必填 - Excel列名同义词列表
+      - <column_name_1>
+      - <column_name_2>
+    type:             # 必填 - 数据类型: string/int/float/date/bool
+    required:         # 必填 - 是否为必填字段: true/false
+    default_value:    # 可选 - 缺失时的默认值
+    format_template:  # 可选 - 格式化模板，如 "{:.2f}%" for float
+    description:      # 可选 - 字段说明
+
+# 表格数据映射（从Excel sheet表格到模板循环变量）
+table_data:
+  <table_name>:
+    sheet_name:       # 必填 - Excel中sheet的名称
+    required:         # 可选 - 该表格是否必需，默认false
+    empty_behavior:   # 可选 - 表格为空时的行为: hide/show_placeholder
+    columns:          # 必填 - 表格列的映射
+      <column_var>:
+        synonyms:     # 必填 - 列名同义词
+          - <col_name_1>
+        type:         # 必填 - 数据类型
+        format_template:  # 可选 - 格式化模板
+
+# ============================================================================
+# COMPLETE EXAMPLE
+# ============================================================================
+
+# ---------- 患者基本信息 ----------
+single_values:
+  patient_name:
+    synonyms: ["患者姓名", "姓名", "病人姓名", "患者名"]
+    type: string
+    required: true
+    description: "患者姓名，必填字段"
+  
+  sample_id:
+    synonyms: ["样本编号", "送检编号", "条码号", "样本ID", "Barcode"]
+    type: string
+    required: true
+    description: "样本唯一标识，必填字段"
+  
+  gender:
+    synonyms: ["性别", "Gender"]
+    type: string
+    required: false
+    default_value: "未知"
+    description: "患者性别：男/女"
+  
+  age:
+    synonyms: ["年龄", "Age"]
+    type: int
+    required: false
+    default_value: null
+    description: "患者年龄，整数"
+  
+  pathology_id:
+    synonyms: ["病理号", "病理编号", "Pathology ID"]
+    type: string
+    required: false
+    default_value: "-"
+    description: "病理科编号"
+  
+  hospital:
+    synonyms: ["送检医院", "医院", "Hospital"]
+    type: string
+    required: false
+    default_value: "-"
+    description: "送检医院名称"
+  
+  department:
+    synonyms: ["送检科室", "科室", "Department"]
+    type: string
+    required: false
+    default_value: "-"
+    description: "送检科室"
+  
+  sample_type:
+    synonyms: ["样本类型", "标本类型", "Sample Type"]
+    type: string
+    required: false
+    default_value: "组织"
+    description: "样本类型：组织/血液/胸腹水等"
+  
+  collection_date:
+    synonyms: ["采样日期", "采集日期", "Collection Date"]
+    type: date
+    required: false
+    format_template: "%Y-%m-%d"
+    description: "样本采集日期"
+  
+  receive_date:
+    synonyms: ["接收日期", "收样日期", "Receive Date"]
+    type: date
+    required: false
+    format_template: "%Y-%m-%d"
+    description: "样本接收日期"
+
+  # ---------- 项目信息 ----------
+  project_name:
+    synonyms: ["项目名称", "检测项目", "Project Name"]
+    type: string
+    required: true
+    description: "检测项目名称，用于自动识别项目类型"
+  
+  cancer_type:
+    synonyms: ["肿瘤类型", "癌种", "Cancer Type"]
+    type: string
+    required: false
+    default_value: "-"
+    description: "肿瘤类型，如：结直肠癌、肺癌等"
+  
+  panel_name:
+    synonyms: ["Panel名称", "Panel", "基因组"]
+    type: string
+    required: false
+    default_value: "-"
+    description: "检测panel名称"
+  
+  detection_method:
+    synonyms: ["检测方法", "Method"]
+    type: string
+    required: false
+    default_value: "NGS高通量测序"
+    description: "检测方法"
+  
+  report_date:
+    synonyms: ["出报告日期", "报告日期", "Report Date"]
+    type: date
+    required: true
+    format_template: "%Y-%m-%d"
+    description: "报告生成日期，必填"
+
+  # ---------- 检测结果摘要 ----------
+  final_conclusion:
+    synonyms: ["结论", "检测结论", "Conclusion"]
+    type: string
+    required: false
+    default_value: ""
+    description: "总体检测结论"
+  
+  # MSI 指标
+  msi_status:
+    synonyms: ["MSI状态", "MSI结论", "MSI Status"]
+    type: string
+    required: false
+    default_value: "未检测"
+    description: "MSI状态：MSI-H/MSI-L/MSS"
+  
+  msi_score:
+    synonyms: ["MSI评分", "MSI Score"]
+    type: float
+    required: false
+    default_value: null
+    format_template: "{:.2f}"
+    description: "MSI评分"
+  
+  # TMB 指标
+  tmb_value:
+    synonyms: ["TMB值", "TMB", "Tumor Mutation Burden"]
+    type: float
+    required: false
+    default_value: null
+    format_template: "{:.2f}"
+    description: "肿瘤突变负荷值"
+  
+  tmb_unit:
+    synonyms: ["TMB单位", "Unit"]
+    type: string
+    required: false
+    default_value: "Muts/Mb"
+    description: "TMB单位"
+  
+  # 甲基化结果（肺癌项目）
+  methylation_result:
+    synonyms: ["甲基化结果", "Methylation Result"]
+    type: string
+    required: false
+    default_value: null
+    description: "甲基化检测结果"
+  
+  # 质控指标
+  qc_total_reads:
+    synonyms: ["总读数", "Total Reads"]
+    type: int
+    required: false
+    default_value: null
+    description: "测序总读数"
+  
+  qc_mean_depth:
+    synonyms: ["平均深度", "Mean Depth", "平均测序深度"]
+    type: float
+    required: false
+    default_value: null
+    format_template: "{:.1f}X"
+    description: "平均测序深度"
+  
+  qc_q30:
+    synonyms: ["Q30", "Q30比例"]
+    type: float
+    required: false
+    default_value: null
+    format_template: "{:.2f}%"
+    description: "Q30质量值比例"
+  
+  qc_coverage:
+    synonyms: ["覆盖度", "Coverage", "靶区覆盖度"]
+    type: float
+    required: false
+    default_value: null
+    format_template: "{:.2f}%"
+    description: "目标区域覆盖度"
+  
+  # 签发信息
+  issuer:
+    synonyms: ["签发人", "报告人", "Issuer"]
+    type: string
+    required: false
+    default_value: ""
+    description: "报告签发人"
+  
+  reviewer:
+    synonyms: ["审核人", "Reviewer"]
+    type: string
+    required: false
+    default_value: ""
+    description: "报告审核人"
+  
+  signature_image_path:
+    synonyms: ["签名图片路径", "Signature Path"]
+    type: string
+    required: false
+    default_value: null
+    description: "签名图片文件路径（用于嵌入到报告）"
+
+# ============================================================================
+# 表格数据映射
+# ============================================================================
+
+table_data:
+  # ---------- 变异明细表 ----------
+  variants:
+    sheet_name: "变异明细"
+    required: false
+    empty_behavior: "show_placeholder"  # 空表时显示"未检出致病性变异"
+    columns:
+      gene:
+        synonyms: ["基因", "Gene", "基因名称"]
+        type: string
+        description: "基因名"
+      
+      variant:
+        synonyms: ["变异", "Variant", "变异位点", "突变"]
+        type: string
+        description: "变异描述"
+      
+      exon:
+        synonyms: ["外显子", "Exon"]
+        type: string
+        description: "外显子编号"
+      
+      cds:
+        synonyms: ["cDNA", "转录本位点", "CDS", "编码区"]
+        type: string
+        description: "cDNA变异位点"
+      
+      protein:
+        synonyms: ["蛋白改变", "Protein", "氨基酸改变", "AA Change"]
+        type: string
+        description: "蛋白质水平变异"
+      
+      af:
+        synonyms: ["频率", "丰度", "AF", "变异频率", "Allele Frequency"]
+        type: float
+        format_template: "{:.2f}%"
+        description: "等位基因频率（百分比）"
+      
+      depth:
+        synonyms: ["深度", "Depth", "覆盖深度", "DP"]
+        type: int
+        description: "该位点测序深度"
+      
+      variant_type:
+        synonyms: ["类型", "突变类型", "Type", "Variant Type"]
+        type: string
+        description: "变异类型：SNV/Indel/CNV"
+      
+      evidence:
+        synonyms: ["证据级别", "Evidence", "临床证据"]
+        type: string
+        description: "证据级别：1A/1B/2A/2B/3/4"
+      
+      clinical_significance:
+        synonyms: ["临床意义", "Clinical Significance"]
+        type: string
+        description: "临床意义描述"
+  
+  # ---------- 融合基因表 ----------
+  fusions:
+    sheet_name: "融合基因"
+    required: false
+    empty_behavior: "hide"  # 空表时隐藏该章节
+    columns:
+      fusion_gene:
+        synonyms: ["融合基因", "Fusion Gene", "融合"]
+        type: string
+        description: "融合基因对，如ALK-EML4"
+      
+      breakpoint:
+        synonyms: ["断点", "Breakpoint"]
+        type: string
+        description: "融合断点位置"
+      
+      reads:
+        synonyms: ["支持读数", "Supporting Reads"]
+        type: int
+        description: "支持该融合的读数"
+      
+      clinical_significance:
+        synonyms: ["临床意义", "Clinical Significance"]
+        type: string
+        description: "融合的临床意义"
+  
+  # ---------- CNV拷贝数变异表 ----------
+  cnvs:
+    sheet_name: "CNV"
+    required: false
+    empty_behavior: "hide"
+    columns:
+      gene:
+        synonyms: ["基因", "Gene"]
+        type: string
+        description: "基因名"
+      
+      cnv_type:
+        synonyms: ["类型", "Type", "CNV类型"]
+        type: string
+        description: "CNV类型：扩增/缺失"
+      
+      copy_number:
+        synonyms: ["拷贝数", "Copy Number", "CN"]
+        type: float
+        format_template: "{:.1f}"
+        description: "拷贝数值"
+      
+      clinical_significance:
+        synonyms: ["临床意义", "Clinical Significance"]
+        type: string
+        description: "CNV的临床意义"
+  
+  # ---------- 甲基化位点表（肺癌项目特有） ----------
+  methylation_sites:
+    sheet_name: "甲基化位点"
+    required: false
+    empty_behavior: "hide"
+    columns:
+      gene:
+        synonyms: ["基因", "Gene"]
+        type: string
+        description: "基因名"
+      
+      site:
+        synonyms: ["位点", "Site", "CpG位点"]
+        type: string
+        description: "甲基化位点"
+      
+      methylation_level:
+        synonyms: ["甲基化水平", "Methylation Level"]
+        type: float
+        format_template: "{:.2f}%"
+        description: "甲基化水平百分比"
+      
+      threshold:
+        synonyms: ["阈值", "Threshold"]
+        type: float
+        format_template: "{:.2f}%"
+        description: "判定阈值"
+      
+      result:
+        synonyms: ["结果", "Result"]
+        type: string
+        description: "甲基化结果：阳性/阴性"
+
+# ============================================================================
+# VALIDATION RULES
+# ============================================================================
+
+validation:
+  # 必填字段验证：这些字段缺失时中止生成
+  critical_fields:
+    - patient_name
+    - sample_id
+    - project_name
+    - report_date
+  
+  # 数据类型验证
+  type_validation:
+    string:
+      max_length: 500
+      trim: true          # 自动去除首尾空格
+    int:
+      min: 0
+      max: 2147483647
+    float:
+      min: 0.0
+      max: 100000.0
+    date:
+      format: "%Y-%m-%d"  # 统一日期格式
+      allow_formats:      # 支持的输入格式（自动转换）
+        - "%Y-%m-%d"
+        - "%Y/%m/%d"
+        - "%Y%m%d"
+        - "%Y.%m.%d"
+  
+  # 数值范围验证（特定字段）
+  field_constraints:
+    af:                   # 变异频率必须在0-100之间
+      min: 0.0
+      max: 100.0
+    age:                  # 年龄合理范围
+      min: 0
+      max: 120
+    qc_q30:              # Q30比例0-100%
+      min: 0.0
+      max: 100.0
+    qc_coverage:         # 覆盖度0-100%
+      min: 0.0
+      max: 100.0
+
+# ============================================================================
+# DATA CLEANING RULES
+# ============================================================================
+
+data_cleaning:
+  # 文本清洗规则
+  text:
+    remove_invisible_chars: true      # 去除不可见字符
+    normalize_whitespace: true        # 多个空格合并为单个
+    full_width_to_half: true          # 全角字符转半角（数字、字母）
+    strip: true                       # 去除首尾空格
+  
+  # 数值清洗规则
+  numeric:
+    remove_chars: [" ", "%", "，", ","]  # 去除这些字符
+    full_width_to_half: true          # 全角数字转半角
+  
+  # 日期清洗规则
+  date:
+    auto_detect: true                 # 自动检测日期格式
+    fallback_to_today: false          # 解析失败时不使用今天日期
+    invalid_handling: "null"          # 无效日期处理：null/empty/error
+
+# ============================================================================
+# MAPPING VERSION
+# ============================================================================
+
+metadata:
+  mapping_version: "1.0.0"
+  created_date: "2025-10-24"
+  last_updated: "2025-10-24"
+  author: "reportgen"
+  description: "字段映射配置用于Excel到Docx报告生成系统"
+  supported_project_types:
+    - "结直肠癌301基因+MSI"
+    - "结直肠癌358基因+MSI"
+    - "肺癌甲基化"
+
+# ============================================================================
+# NOTES
+# ============================================================================
+
+# 使用说明:
+# 1. synonyms列表中的匹配是不区分大小写的
+# 2. synonyms匹配时会自动去除空格
+# 3. 第一个匹配的同义词会被使用
+# 4. required=true的字段缺失时会中止生成并报错
+# 5. required=false的字段缺失时使用default_value或null
+# 6. format_template使用Python字符串格式化语法
+# 7. 表格数据的empty_behavior决定空表时的行为：hide隐藏章节，show_placeholder显示占位文本
+

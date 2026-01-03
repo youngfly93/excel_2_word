@@ -1,0 +1,98 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv
+
+# Testing
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+*.cover
+*.log
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+._*
+
+# Project specific
+data/input/*
+data/output/*
+data/logs/*
+!data/input/.gitkeep
+!data/output/.gitkeep
+!data/logs/.gitkeep
+
+# Knowledge bases (downloaded raw sources can be large)
+data/knowledge_bases/raw/*
+!data/knowledge_bases/raw/.gitkeep
+
+# Test fixtures (large files)
+tests/fixtures/*.xlsx
+tests/fixtures/*.docx
+!tests/fixtures/sample_*.xlsx
+!tests/fixtures/sample_*.docx
+!tests/fixtures/missing_critical_fields.xlsx
+
+# Temporary files
+*.tmp
+*.bak
+.~lock.*
+
+# Tool scratch/work dirs
+tools/_work/
+
+# Performance profiling
+*.prof
+*.lprof
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# Environment variables
+.env
+.env.local
+
+# Local overrides (contain real/sample-specific PHI)
+config/patient_info.local.yaml
+
+# Root-level patient data files (should not be committed)
+/*.xlsx
+/*.docx
+/2025.*/

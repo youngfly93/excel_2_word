@@ -1,0 +1,11 @@
+# Excel到Docx自动化报告生成系统 - 生产依赖
+# Version: 1.0.0
+
+# 核心依赖
+docxtpl>=0.16.0              # Jinja2风格的docx模板渲染引擎
+pandas>=1.5.0                 # Excel数据读取和处理
+openpyxl>=3.0.0              # Excel (.xlsx) 文件读写引擎（pandas后端）
+PyYAML>=6.0                  # 字段映射配置文件解析
+python-dateutil>=2.8.0       # 日期格式解析和统一化
+click>=8.0.0                 # 命令行接口框架
+
