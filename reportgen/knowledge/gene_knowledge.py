@@ -622,8 +622,11 @@ class GeneKnowledgeProvider:
         Returns:
             用药提示解析章节列表，每个元素包含:
             - gene: 基因名称
+            - mutation_info: 突变信息 (如 "c.844C>T，p.R282W")
+            - header: 完整标题 (如 "TP53：c.844C>T，p.R282W突变相应靶向药物")
             - drug_name: 药物名称
             - drug_type: 药物类型 (benefit/caution)
+            - drug_type_cn: 药物类型中文
             - relation: 基因变异与药物关联分析
             - clinical: 药物疗效临床解析
         """
@@ -635,8 +638,16 @@ class GeneKnowledgeProvider:
 
         for v in variants:
             gene = v.get("gene", "").upper()
+            c_hgvs = v.get("cHGVS", "")
+            p_hgvs = v.get("pHGVS", "")
             benefit_drugs = v.get("benefit_drugs", "")
             caution_drugs = v.get("caution_drugs", "")
+
+            # 构建突变信息 (如 "c.844C>T，p.R282W")
+            if p_hgvs and p_hgvs != "--":
+                mutation_info = f"{c_hgvs}，{p_hgvs}"
+            else:
+                mutation_info = c_hgvs
 
             # 获取该基因的所有药物信息
             drug_infos = self.get_drug_full_info(gene)
@@ -651,8 +662,12 @@ class GeneKnowledgeProvider:
                             key = f"{gene}:{drug_name}:benefit"
                             if key not in seen_drugs:
                                 seen_drugs.add(key)
+                                # 构建标题 (如 "TP53：c.844C>T，p.R282W突变相应靶向药物")
+                                header = f"{gene}：{mutation_info}突变相应靶向药物"
                                 sections.append({
                                     "gene": gene,
+                                    "mutation_info": mutation_info,
+                                    "header": header,
                                     "drug_name": drug_name,
                                     "drug_type": "benefit",
                                     "drug_type_cn": "潜在获益药物",
@@ -669,8 +684,12 @@ class GeneKnowledgeProvider:
                             key = f"{gene}:{drug_name}:caution"
                             if key not in seen_drugs:
                                 seen_drugs.add(key)
+                                # 构建标题 (如 "KRAS：c.34G>A，p.G12S突变相应负相关药物")
+                                header = f"{gene}：{mutation_info}突变相应负相关药物"
                                 sections.append({
                                     "gene": gene,
+                                    "mutation_info": mutation_info,
+                                    "header": header,
                                     "drug_name": drug_name,
                                     "drug_type": "caution",
                                     "drug_type_cn": "慎用药物",
