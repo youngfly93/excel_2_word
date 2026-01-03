@@ -80,7 +80,7 @@ ALL_IMMUNE_GENES = IMMUNE_POSITIVE_GENES | IMMUNE_NEGATIVE_GENES | IMMUNE_HYPERP
 # 模板中显示的免疫基因 -> Jinja2变量名映射（32个基因）
 # 按模板中出现顺序排列
 TEMPLATE_IMMUNE_GENE_VARS = {
-    # === 正相关基因（12个）===
+    # === 正相关基因（13个）===
     "MLH1": "immune_MLH1_result",
     "MSH2": "immune_MSH2_result",
     "MSH6": "immune_MSH6_result",
@@ -93,6 +93,7 @@ TEMPLATE_IMMUNE_GENE_VARS = {
     "TET1": "immune_TET1_result",
     "SERPINB3": "immune_SERPINB3_result",
     "SERPINB4": "immune_SERPINB4_result",
+    "KRAS": "immune_KRAS_result",  # 正相关表格中的KRAS
     # === 负相关基因（10个，不含EGFR/KRAS_STK11/IFNGR特殊变量）===
     "PTEN": "immune_PTEN_result",
     "JAK1": "immune_JAK1_result",
@@ -708,6 +709,32 @@ def build_per_gene_immune_results(
         results["immune_IFNGR_result"] = "检出：" + "；".join(formatted)
     else:
         results["immune_IFNGR_result"] = "未检出有害变异"
+
+    # 4. KRAS/TP53 共突变
+    kras_variants = variants_by_gene.get("KRAS", [])
+    tp53_variants = variants_by_gene.get("TP53", [])
+    if kras_variants and tp53_variants:
+        # 两个都检出 - 显示共突变详情
+        kras_fmt = "；".join([format_variant(v) for v in kras_variants])
+        tp53_fmt = "；".join([format_variant(v) for v in tp53_variants])
+        results["immune_KRAS_TP53_result"] = f"TP53：{tp53_fmt}；KRAS：{kras_fmt}"
+    elif kras_variants or tp53_variants:
+        # 只检出一个
+        results["immune_KRAS_TP53_result"] = "未检出共突变"
+    else:
+        results["immune_KRAS_TP53_result"] = "未检出有害变异"
+
+    # 5. DDR基因（DNA损伤修复相关基因：ATM, BRCA1, BRCA2, CHEK2, PALB2, RAD51等）
+    ddr_genes = ["ATM", "BRCA1", "BRCA2", "CHEK2", "PALB2", "RAD51", "RAD51C", "RAD51D", "BARD1", "BRIP1"]
+    ddr_detected = []
+    for ddr_gene in ddr_genes:
+        if ddr_gene in variants_by_gene:
+            for v in variants_by_gene[ddr_gene]:
+                ddr_detected.append(f"{ddr_gene}：{format_variant(v)}")
+    if ddr_detected:
+        results["immune_DDR_result"] = "；".join(ddr_detected)
+    else:
+        results["immune_DDR_result"] = "未检出有害变异"
 
     return results
 
