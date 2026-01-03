@@ -11,10 +11,14 @@ Python 3.9 compatible.
 
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 import pandas as pd
 
 from .mutation_description import MutationDescriptionGenerator
+
+if TYPE_CHECKING:
+    from reportgen.services.pubmed_service import PubMedService
+    from reportgen.services.clinicaltrials_service import ClinicalTrialsService
 
 
 class GeneKnowledgeProvider:
@@ -793,3 +797,164 @@ class GeneKnowledgeProvider:
             {"number": i, "text": ref.strip()}
             for i, ref in enumerate(flat_refs, 1)
         ]
+
+    def build_enriched_references(
+        self,
+        variants: List[Dict[str, Any]],
+        pubmed_service: Optional["PubMedService"] = None,
+        clinicaltrials_service: Optional["ClinicalTrialsService"] = None,
+        max_per_gene: int = 5,
+        enrich_missing: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """
+        构建丰富化的编号参考文献列表
+
+        使用 PubMed 和 ClinicalTrials.gov 服务自动补全缺失的参考文献信息。
+
+        Args:
+            variants: 变异列表
+            pubmed_service: PubMed 服务实例（可选）
+            clinicaltrials_service: ClinicalTrials 服务实例（可选）
+            max_per_gene: 每个基因最多返回的参考文献数量
+            enrich_missing: 是否自动丰富缺失的引用信息
+
+        Returns:
+            参考文献列表，每项包含:
+            - number: 编号
+            - text: 格式化的参考文献文本
+            - pmid: PMID（如适用）
+            - nct_id: NCT ID（如适用）
+            - source: 来源类型 ("cache", "api", "original")
+        """
+        from reportgen.utils.reference_extractor import extract_pmids, extract_nct_ids
+
+        # 1. 获取原始参考文献
+        flat_refs = self.build_all_references_flat(variants, max_per_gene)
+
+        # 2. 如果没有服务或不需要丰富化，返回基本格式
+        if not enrich_missing or (not pubmed_service and not clinicaltrials_service):
+            return [
+                {"number": i, "text": ref.strip(), "source": "original"}
+                for i, ref in enumerate(flat_refs, 1)
+            ]
+
+        # 3. 处理每个参考文献
+        results = []
+        seen_pmids = set()
+        seen_ncts = set()
+
+        for i, ref in enumerate(flat_refs, 1):
+            ref_text = ref.strip()
+            result = {
+                "number": i,
+                "text": ref_text,
+                "source": "original",
+                "pmid": None,
+                "nct_id": None,
+            }
+
+            # 提取 PMID
+            pmids = extract_pmids(ref_text)
+            if pmids and pubmed_service:
+                pmid = pmids[0]
+                if pmid not in seen_pmids:
+                    seen_pmids.add(pmid)
+                    result["pmid"] = pmid
+
+                    # 尝试丰富化
+                    citation = pubmed_service.get_citation(pmid)
+                    if citation:
+                        # 使用丰富化后的格式
+                        enriched_text = pubmed_service.format_citation(
+                            citation, style="full"
+                        )
+                        if enriched_text:
+                            result["text"] = enriched_text
+                            result["source"] = "api" if pubmed_service._dirty else "cache"
+
+            # 提取 NCT ID
+            nct_ids = extract_nct_ids(ref_text)
+            if nct_ids and clinicaltrials_service:
+                nct_id = nct_ids[0]
+                if nct_id not in seen_ncts:
+                    seen_ncts.add(nct_id)
+                    result["nct_id"] = nct_id
+
+                    # 尝试丰富化
+                    study = clinicaltrials_service.get_study(nct_id)
+                    if study:
+                        # 使用丰富化后的格式
+                        enriched_text = clinicaltrials_service.format_citation(
+                            study, style="full"
+                        )
+                        if enriched_text:
+                            result["text"] = enriched_text
+                            result["source"] = "api" if clinicaltrials_service._dirty else "cache"
+
+            results.append(result)
+
+        return results
+
+    def collect_all_reference_ids(
+        self,
+        variants: List[Dict[str, Any]],
+        include_drug_analysis: bool = True,
+    ) -> Tuple[List[str], List[str]]:
+        """
+        收集所有需要的参考文献 ID
+
+        从基因知识、药物分析等模块中提取所有 PMID 和 NCT ID。
+
+        Args:
+            variants: 变异列表
+            include_drug_analysis: 是否包含药物分析中的引用
+
+        Returns:
+            (pmids, nct_ids) 元组
+        """
+        from reportgen.utils.reference_extractor import extract_pmids, extract_nct_ids
+
+        all_pmids = []
+        all_ncts = []
+        seen_pmids = set()
+        seen_ncts = set()
+
+        def collect_from_text(text: str):
+            if not text:
+                return
+
+            for pmid in extract_pmids(text):
+                if pmid not in seen_pmids:
+                    seen_pmids.add(pmid)
+                    all_pmids.append(pmid)
+
+            for nct_id in extract_nct_ids(text):
+                if nct_id not in seen_ncts:
+                    seen_ncts.add(nct_id)
+                    all_ncts.append(nct_id)
+
+        # 1. 从参考文献缓存中收集
+        for v in variants:
+            gene = v.get("gene", "").upper()
+            refs = self.get_references(gene)
+            for ref in refs:
+                collect_from_text(ref)
+
+        # 2. 从基因知识中收集
+        for v in variants:
+            gene = v.get("gene", "").upper()
+            intro = self.get_gene_intro(gene)
+            analysis = self.get_gene_analysis(gene)
+            collect_from_text(intro)
+            collect_from_text(analysis)
+
+        # 3. 从药物分析中收集
+        if include_drug_analysis:
+            for v in variants:
+                gene = v.get("gene", "").upper()
+                drug_info = self.get_drug_info(gene)
+                for key, value in drug_info.items():
+                    if isinstance(value, str):
+                        collect_from_text(value)
+
+        return all_pmids, all_ncts
