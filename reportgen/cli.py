@@ -61,9 +61,9 @@ def cli(ctx, config_dir, log_file, verbose):
     "--template",
     "-t",
     required=False,
-    default="templates/jinja2_template_358_v17.docx",
+    default="templates/jinja2_template_358_v18.docx",
     type=click.Path(exists=True),
-    help="Docx模板文件路径（默认: templates/jinja2_template_358_v17.docx）",
+    help="Docx模板文件路径（默认: templates/jinja2_template_358_v18.docx）",
 )
 @click.option(
     "--output",
