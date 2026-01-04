@@ -18,11 +18,13 @@ Python 3.9 compatible.
 import logging
 import re
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 from reportgen.models.excel_data import ExcelDataSource
 from reportgen.models.report_data import ReportData
 from reportgen.utils.hgvs_utils import infer_variant_type_cn
 from reportgen.knowledge import GeneKnowledgeProvider, CancerTypeGeneProvider
+from reportgen.services import PubMedService, ClinicalTrialsService
 
 logger = logging.getLogger(__name__)
 
@@ -1631,10 +1633,36 @@ def enhance_report_data(
             report_data.set_table("references_by_gene", references_by_gene)
 
             # Build numbered references for template (批注#34: 参考文献自动汇总)
-            numbered_references = gene_knowledge_provider.build_numbered_references(
-                variants=detected_variants,
-                max_per_gene=5
-            )
+            # 使用 PubMed/ClinicalTrials 服务自动丰富参考文献信息
+            cache_dir = Path(base_path) / "data" / "cache" if base_path else Path("data/cache")
+            pubmed_cache = cache_dir / "pubmed_cache.json"
+            nct_cache = cache_dir / "nct_cache.json"
+
+            try:
+                pubmed_service = PubMedService(
+                    cache_path=str(pubmed_cache) if pubmed_cache.parent.exists() else None,
+                    auto_save=True
+                )
+                nct_service = ClinicalTrialsService(
+                    cache_path=str(nct_cache) if nct_cache.parent.exists() else None,
+                    auto_save=True
+                )
+
+                # 使用丰富化的参考文献（自动从 PubMed/NCT 补全信息）
+                numbered_references = gene_knowledge_provider.build_enriched_references(
+                    variants=detected_variants,
+                    pubmed_service=pubmed_service,
+                    clinicaltrials_service=nct_service,
+                    max_per_gene=5,
+                    enrich_missing=True
+                )
+            except Exception:
+                # 如果服务初始化失败，回退到基础方法
+                numbered_references = gene_knowledge_provider.build_numbered_references(
+                    variants=detected_variants,
+                    max_per_gene=5
+                )
+
             report_data.set_table("numbered_references", numbered_references)
 
         except Exception:
