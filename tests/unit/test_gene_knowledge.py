@@ -154,8 +154,10 @@ class TestGeneKnowledgeProvider:
     def test_get_gene_analysis(self, provider, base_path):
         """Test getting gene analysis."""
         provider.load(str(base_path))
-        analysis = provider.get_gene_analysis("KRAS")
+        analysis = provider.get_gene_analysis("TP53")
         assert isinstance(analysis, str)
+        # 示例知识库中“基因变异解析”内容可能分散在 Unnamed:* 列；应能回填出非空解析文本
+        assert "TP53基因编码的蛋白" in analysis or len(analysis.strip()) > 0
 
     def test_get_gene_transcript_info(self, provider, base_path):
         """Test getting gene transcript info."""
@@ -169,17 +171,20 @@ class TestGeneKnowledgeProvider:
         """Test building gene knowledge section."""
         provider.load(str(base_path))
         section = provider.build_gene_knowledge_section(
-            gene="KRAS",
-            c_hgvs="c.35G>A",
-            p_hgvs="p.G12D",
+            gene="TP53",
+            c_hgvs="c.844C>T",
+            p_hgvs="p.R282W",
             frequency=38.5,
             has_drug=True,
+            cancer_type="结直肠癌",
         )
         assert "gene" in section
-        assert section["gene"] == "KRAS"
+        assert section["gene"] == "TP53"
         assert "header" in section
-        assert "KRAS" in section["header"]
+        assert "TP53" in section["header"]
         assert "mutation_desc" in section
+        # 示例库可能含 {XX癌 ...} 占位符；应在构建章节时替换
+        assert "{XX癌" not in section.get("mutation_analysis", "")
 
     def test_build_all_gene_knowledge_sections(self, provider, base_path):
         """Test building all gene knowledge sections."""

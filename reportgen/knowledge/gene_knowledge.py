@@ -221,6 +221,20 @@ class GeneKnowledgeProvider:
         if gene_col not in df.columns:
             return
 
+        # 兼容“基因变异解析”列为空、内容分散在 Unnamed:* 的知识库布局（如示例：+++自建肠癌基因数据库.xlsx）
+        unnamed_cols = [c for c in df.columns if str(c).startswith("Unnamed:")]
+
+        def _unnamed_sort_key(col: Any) -> int:
+            match = re.search(r"Unnamed:\s*(\d+)", str(col))
+            if not match:
+                return 9999
+            try:
+                return int(match.group(1))
+            except Exception:
+                return 9999
+
+        unnamed_cols = sorted(unnamed_cols, key=_unnamed_sort_key)
+
         for _, row in df.iterrows():
             gene = self._norm_text(row.get(gene_col))
             if not gene:
@@ -235,6 +249,23 @@ class GeneKnowledgeProvider:
 
             # 缓存基因变异解析
             analysis = self._norm_text(row.get(analysis_col))
+            if not analysis and unnamed_cols:
+                # Unnamed:7/8/9 在示例库中仅 TP53 存在，且 9 为“修改后”句子；优先使用 9，避免重复/草稿
+                col9 = next((c for c in unnamed_cols if str(c).strip() == "Unnamed: 9"), None)
+                skip_names = set()
+                if col9 is not None and self._norm_text(row.get(col9)):
+                    skip_names.update({"Unnamed: 7", "Unnamed: 8"})
+
+                parts: List[str] = []
+                for col in unnamed_cols:
+                    if str(col).strip() in skip_names:
+                        continue
+                    part = self._norm_text(row.get(col))
+                    if part:
+                        parts.append(part)
+                if parts:
+                    analysis = "\n".join(parts)
+
             if analysis and gene_upper not in self._gene_analysis_cache:
                 self._gene_analysis_cache[gene_upper] = analysis
 
@@ -564,6 +595,12 @@ class GeneKnowledgeProvider:
         Returns:
             基因变异说明文本
         """
+        # 终版口径：优先依据 HGVS 自动推断突变类型（批注#26）
+        # 避免把“点突变”等展示型字段传给生成器导致回退到通用描述
+        if mutation_type:
+            mt = str(mutation_type).strip()
+            if mt in {"点突变", "--", "-", "*", "nan", "NaN"}:
+                mutation_type = None
         return self._mutation_desc_gen.generate(
             gene, c_hgvs, p_hgvs, frequency, mutation_type
         )
@@ -616,6 +653,7 @@ class GeneKnowledgeProvider:
 
         # 获取变异解析
         mutation_analysis = self.get_gene_analysis(gene)
+        mutation_analysis = self._fill_cancer_placeholders(mutation_analysis, cancer_type)
 
         return {
             "gene": gene,
@@ -626,6 +664,36 @@ class GeneKnowledgeProvider:
             "mutation_analysis": mutation_analysis,
             "has_drug": has_drug,
         }
+
+    _CANCER_PLACEHOLDER_RE = re.compile(r"\{XX癌[^}]*\}")
+
+    def _normalize_cancer_type_label(self, cancer_type: str) -> str:
+        """将报告癌种归一化为“替换占位符”的展示文本。"""
+        ct = self._norm_text(cancer_type)
+        if not ct:
+            return "肠癌"
+
+        # 常见合并：报告里可能是“乙状结肠癌/结肠癌/直肠癌/结直肠癌”
+        if any(k in ct for k in ("结直肠", "结肠", "直肠", "乙状结肠", "肠")):
+            return "结直肠癌"
+
+        return ct
+
+    def _fill_cancer_placeholders(self, text: str, cancer_type: str) -> str:
+        """
+        替换知识库中的癌种占位符。
+
+        示例库中可能出现：{XX癌 运营系统调取}
+        """
+        if not text:
+            return text
+
+        ct_label = self._normalize_cancer_type_label(cancer_type)
+        out = str(text)
+        out = out.replace("{XX癌 运营系统调取}", ct_label)
+        out = out.replace("{XX癌}", ct_label)
+        out = self._CANCER_PLACEHOLDER_RE.sub(ct_label, out)
+        return out
 
     def build_all_gene_knowledge_sections(
         self,
