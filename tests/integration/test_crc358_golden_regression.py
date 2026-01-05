@@ -14,6 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
+import yaml
 
 from reportgen.config.loader import ConfigLoader
 from reportgen.core.data_cleaner import DataCleaner
@@ -127,8 +128,25 @@ def test_crc358_golden_regression(tmp_path: Path) -> None:
 
     excel_path = tmp_path / "sample_crc358.xlsx"
     kb_path = tmp_path / "gene_kb.xlsx"
+    variant_insights_path = tmp_path / "variant_insights.yaml"
     _write_min_crc358_excel(excel_path)
     _write_min_gene_kb(kb_path)
+    variant_insights_path.write_text(
+        yaml.safe_dump(
+            {
+                "schema_version": "1.0",
+                "variant_insights": [
+                    {
+                        "gene": "TP53",
+                        "p_hgvs": "p.R282W",
+                        "text": "INSIGHT: TP53 p.R282W hotspot example.",
+                    }
+                ],
+            },
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
 
     # 解析 Excel -> ReportData
     excel_reader = ExcelReader(config_dir=str(config_dir))
@@ -175,6 +193,11 @@ def test_crc358_golden_regression(tmp_path: Path) -> None:
                 "ref_genes": "关联基因",
             },
         },
+        "variant_insights_db": {
+            "enabled": True,
+            "path": str(variant_insights_path),
+            "format": "yaml",
+        },
         "gene_transcript_db": {"enabled": False},
     }
     gene_provider = GeneKnowledgeProvider(config=gene_kb_cfg)
@@ -215,8 +238,18 @@ def test_crc358_golden_regression(tmp_path: Path) -> None:
     assert refs and refs[0].get("number") == 1
     assert "TP53" in str(refs[0].get("text", ""))
 
+    # --- 位点个性化一句话（批注#27） ---
+    sections = report_data.get_table("gene_knowledge_sections")
+    assert sections
+    tp53_sec = next(s for s in sections if s.get("gene") == "TP53")
+    assert str(tp53_sec.get("mutation_analysis", "")).startswith(
+        "INSIGHT: TP53 p.R282W hotspot example."
+    )
+
     # --- 契约校验：对齐 v18 模板的关键一致性/引用格式/变量存在性 ---
-    contracts_cfg = ConfigLoader(config_dir=str(config_dir)).load_template_contracts_config()
+    contracts_cfg = ConfigLoader(
+        config_dir=str(config_dir)
+    ).load_template_contracts_config()
     template_path = repo_root / "templates" / "jinja2_template_358_v18.docx"
     contract = select_contract(contracts_cfg, str(template_path))
     assert contract is not None

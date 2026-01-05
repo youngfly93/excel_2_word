@@ -8,6 +8,9 @@ This project can load optional offline “knowledge bases” to improve report c
 2) **Immune gene list** (`knowledge_bases.immune_gene_list`)
    - Used to summarize detected variants into “免疫治疗正相关/负相关/超进展相关基因”.
 
+3) **Variant insights DB** (`knowledge_bases.variant_insights_db`)
+   - Used to add a variant-level one-liner into `gene_knowledge_sections` (e.g., hotspots/domains/mechanisms).
+
 ## Public sources (from `data_get.md`)
 
 - CIViC data releases: https://civicdb.org/releases (CC0)
@@ -23,4 +26,3 @@ This project can load optional offline “knowledge bases” to improve report c
 3. The outputs will be written to `data/knowledge_bases/processed/`.
 
 > Note: These sources are for internal automation and traceability. They are not medical advice.
-

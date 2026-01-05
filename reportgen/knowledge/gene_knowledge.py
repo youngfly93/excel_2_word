@@ -11,14 +11,16 @@ Python 3.9 compatible.
 
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+
 import pandas as pd
+import yaml
 
 from .mutation_description import MutationDescriptionGenerator
 
 if TYPE_CHECKING:
-    from reportgen.services.pubmed_service import PubMedService
     from reportgen.services.clinicaltrials_service import ClinicalTrialsService
+    from reportgen.services.pubmed_service import PubMedService
 
 
 class GeneKnowledgeProvider:
@@ -51,6 +53,8 @@ class GeneKnowledgeProvider:
         self._drug_full_cache: Dict[str, List[Dict[str, str]]] = {}  # 完整药物信息
         self._gene_transcript_cache: Dict[str, Dict[str, str]] = {}
         self._references_cache: Dict[str, List[str]] = {}  # 基因 -> 参考文献列表
+        self._variant_insight_by_p: Dict[Tuple[str, str], str] = {}
+        self._variant_insight_by_c: Dict[Tuple[str, str], str] = {}
 
         # 位点描述生成器
         self._mutation_desc_gen = MutationDescriptionGenerator()
@@ -87,8 +91,57 @@ class GeneKnowledgeProvider:
             if db_path.exists():
                 self._load_gene_transcript_db(db_path, transcript_config)
 
+        # 加载变异级一句话知识库（按 gene + p/c HGVS 索引）
+        variant_cfg = self.config.get("variant_insights_db", {})
+        if isinstance(variant_cfg, dict) and variant_cfg.get("enabled", False):
+            db_path = base / str(variant_cfg.get("path", ""))
+            if db_path.exists():
+                self._load_variant_insights_db(db_path, variant_cfg)
+
         self._loaded = True
         return True
+
+    def _load_variant_insights_db(self, path: Path, config: Dict) -> None:
+        """加载“变异级一句话”知识库（YAML）。"""
+        try:
+            fmt = str(config.get("format") or "").strip().lower()
+            if not fmt:
+                fmt = "yaml" if path.suffix.lower() in {".yaml", ".yml"} else ""
+
+            if fmt != "yaml":
+                return
+
+            raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            items = raw.get("variant_insights") if isinstance(raw, dict) else None
+            if not isinstance(items, list):
+                return
+
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                gene = self._norm_text(item.get("gene")).upper()
+                if not gene:
+                    continue
+
+                text = self._norm_text(
+                    item.get("text") or item.get("insight") or item.get("content")
+                )
+                if not text:
+                    continue
+
+                p_key = self._normalize_hgvs_key(
+                    item.get("p_hgvs") or item.get("p") or ""
+                )
+                c_key = self._normalize_hgvs_key(
+                    item.get("c_hgvs") or item.get("c") or ""
+                )
+
+                if p_key:
+                    self._variant_insight_by_p[(gene, p_key)] = text
+                if c_key:
+                    self._variant_insight_by_c[(gene, c_key)] = text
+        except Exception:
+            return
 
     def _load_gene_knowledge_db(self, path: Path, config: Dict) -> None:
         """加载基因知识库Excel文件"""
@@ -152,6 +205,44 @@ class GeneKnowledgeProvider:
         if s.lower() in ("nan", "none", "*", "-"):
             return ""
         return s
+
+    def _normalize_hgvs_key(self, value: Any) -> str:
+        """归一化 HGVS 键（用于变异级知识库索引）。"""
+        s = self._norm_text(value)
+        if not s:
+            return ""
+        # 常见写法兼容：允许省略前缀
+        if s.startswith("c.") or s.startswith("p."):
+            return s
+        if re.match(r"^[A-Za-z*][0-9]+[A-Za-z*]+$", s):
+            return f"p.{s}"
+        return s
+
+    def get_variant_insight(self, gene: str, c_hgvs: str, p_hgvs: str) -> str:
+        """查询某个具体变异位点的“一句话解读”（优先按 p，再按 c）。"""
+        if not self._loaded:
+            self.load()
+
+        g = self._norm_text(gene).upper()
+        if not g:
+            return ""
+
+        aliases = {
+            "HER2": ["ERBB2"],
+            "ERBB2": ["HER2"],
+        }
+        gene_candidates = [g] + aliases.get(g, [])
+
+        p_key = self._normalize_hgvs_key(p_hgvs)
+        c_key = self._normalize_hgvs_key(c_hgvs)
+
+        for gg in gene_candidates:
+            if p_key and (gg, p_key) in self._variant_insight_by_p:
+                return self._variant_insight_by_p[(gg, p_key)]
+        for gg in gene_candidates:
+            if c_key and (gg, c_key) in self._variant_insight_by_c:
+                return self._variant_insight_by_c[(gg, c_key)]
+        return ""
 
     def _normalize_drug_list_text(self, value: Any) -> str:
         """规范化“药物列表”字段文本，便于做包含匹配。"""
@@ -251,7 +342,9 @@ class GeneKnowledgeProvider:
             analysis = self._norm_text(row.get(analysis_col))
             if not analysis and unnamed_cols:
                 # Unnamed:7/8/9 在示例库中仅 TP53 存在，且 9 为“修改后”句子；优先使用 9，避免重复/草稿
-                col9 = next((c for c in unnamed_cols if str(c).strip() == "Unnamed: 9"), None)
+                col9 = next(
+                    (c for c in unnamed_cols if str(c).strip() == "Unnamed: 9"), None
+                )
                 skip_names = set()
                 if col9 is not None and self._norm_text(row.get(col9)):
                     skip_names.update({"Unnamed: 7", "Unnamed: 8"})
@@ -348,21 +441,45 @@ class GeneKnowledgeProvider:
             if gene and gene != "基因名称":
                 current_gene = gene.upper()
                 current_level = self._norm_text(row.get(level_col)) if level_col else ""
-                current_c_point = self._norm_text(row.get(c_point_col)) if c_point_col else ""
-                current_p_point = self._norm_text(row.get(p_point_col)) if p_point_col else ""
+                current_c_point = (
+                    self._norm_text(row.get(c_point_col)) if c_point_col else ""
+                )
+                current_p_point = (
+                    self._norm_text(row.get(p_point_col)) if p_point_col else ""
+                )
 
             if not current_gene:
                 continue
 
             # 获取获益药物信息
-            benefit_drug = self._norm_text(row.get(benefit_drug_col)) if benefit_drug_col else ""
-            benefit_relation = self._norm_text(row.get(benefit_relation_col)) if benefit_relation_col else ""
-            benefit_clinical = self._norm_text(row.get(benefit_clinical_col)) if benefit_clinical_col else ""
+            benefit_drug = (
+                self._norm_text(row.get(benefit_drug_col)) if benefit_drug_col else ""
+            )
+            benefit_relation = (
+                self._norm_text(row.get(benefit_relation_col))
+                if benefit_relation_col
+                else ""
+            )
+            benefit_clinical = (
+                self._norm_text(row.get(benefit_clinical_col))
+                if benefit_clinical_col
+                else ""
+            )
 
             # 获取负相关药物信息
-            negative_drug = self._norm_text(row.get(negative_drug_col)) if negative_drug_col else ""
-            negative_relation = self._norm_text(row.get(negative_relation_col)) if negative_relation_col else ""
-            negative_clinical = self._norm_text(row.get(negative_clinical_col)) if negative_clinical_col else ""
+            negative_drug = (
+                self._norm_text(row.get(negative_drug_col)) if negative_drug_col else ""
+            )
+            negative_relation = (
+                self._norm_text(row.get(negative_relation_col))
+                if negative_relation_col
+                else ""
+            )
+            negative_clinical = (
+                self._norm_text(row.get(negative_clinical_col))
+                if negative_clinical_col
+                else ""
+            )
 
             # 初始化缓存
             if current_gene not in self._drug_analysis_cache:
@@ -373,28 +490,34 @@ class GeneKnowledgeProvider:
             # 存储获益药物
             if benefit_drug:
                 self._drug_analysis_cache[current_gene][benefit_drug] = benefit_clinical
-                self._drug_full_cache[current_gene].append({
-                    "type": "benefit",
-                    "drug": benefit_drug,
-                    "level": current_level,
-                    "c_point": current_c_point,
-                    "p_point": current_p_point,
-                    "relation": benefit_relation,
-                    "clinical": benefit_clinical,
-                })
+                self._drug_full_cache[current_gene].append(
+                    {
+                        "type": "benefit",
+                        "drug": benefit_drug,
+                        "level": current_level,
+                        "c_point": current_c_point,
+                        "p_point": current_p_point,
+                        "relation": benefit_relation,
+                        "clinical": benefit_clinical,
+                    }
+                )
 
             # 存储负相关药物
             if negative_drug:
-                self._drug_analysis_cache[current_gene][f"慎用:{negative_drug}"] = negative_clinical
-                self._drug_full_cache[current_gene].append({
-                    "type": "caution",
-                    "drug": negative_drug,
-                    "level": current_level,
-                    "c_point": current_c_point,
-                    "p_point": current_p_point,
-                    "relation": negative_relation,
-                    "clinical": negative_clinical,
-                })
+                self._drug_analysis_cache[current_gene][
+                    f"慎用:{negative_drug}"
+                ] = negative_clinical
+                self._drug_full_cache[current_gene].append(
+                    {
+                        "type": "caution",
+                        "drug": negative_drug,
+                        "level": current_level,
+                        "c_point": current_c_point,
+                        "p_point": current_p_point,
+                        "relation": negative_relation,
+                        "clinical": negative_clinical,
+                    }
+                )
 
     def _build_references_cache(self, columns: Dict) -> None:
         """构建参考文献缓存"""
@@ -580,7 +703,7 @@ class GeneKnowledgeProvider:
         c_hgvs: str,
         p_hgvs: str,
         frequency: float,
-        mutation_type: Optional[str] = None
+        mutation_type: Optional[str] = None,
     ) -> str:
         """
         生成基因变异说明
@@ -613,7 +736,7 @@ class GeneKnowledgeProvider:
         frequency: float,
         mutation_type: Optional[str] = None,
         has_drug: bool = False,
-        cancer_type: str = "结直肠癌"
+        cancer_type: str = "结直肠癌",
     ) -> Dict[str, str]:
         """
         构建完整的基因诊疗知识章节
@@ -653,7 +776,22 @@ class GeneKnowledgeProvider:
 
         # 获取变异解析
         mutation_analysis = self.get_gene_analysis(gene)
-        mutation_analysis = self._fill_cancer_placeholders(mutation_analysis, cancer_type)
+        mutation_analysis = self._fill_cancer_placeholders(
+            mutation_analysis, cancer_type
+        )
+
+        # 批注#27：位点个性化“一句话”优先置顶（若命中）
+        variant_insight = self.get_variant_insight(gene, c_hgvs, p_hgvs)
+        if variant_insight:
+            variant_insight = (
+                variant_insight.replace("{{ gene }}", gene)
+                .replace("{{ c_hgvs }}", c_hgvs)
+                .replace("{{ p_hgvs }}", p_display or p_hgvs)
+            )
+            if mutation_analysis:
+                mutation_analysis = f"{variant_insight}\n{mutation_analysis}".strip()
+            else:
+                mutation_analysis = variant_insight
 
         return {
             "gene": gene,
@@ -696,9 +834,7 @@ class GeneKnowledgeProvider:
         return out
 
     def build_all_gene_knowledge_sections(
-        self,
-        variants: List[Dict[str, Any]],
-        cancer_type: str = "结直肠癌"
+        self, variants: List[Dict[str, Any]], cancer_type: str = "结直肠癌"
     ) -> List[Dict[str, str]]:
         """
         为所有变异构建基因诊疗知识章节
@@ -736,9 +872,7 @@ class GeneKnowledgeProvider:
             caution_drugs = v.get("caution_drugs", "")
             has_drug = (
                 benefit_drugs and benefit_drugs != "--" and benefit_drugs != "无"
-            ) or (
-                caution_drugs and caution_drugs != "--" and caution_drugs != "无"
-            )
+            ) or (caution_drugs and caution_drugs != "--" and caution_drugs != "无")
 
             section = self.build_gene_knowledge_section(
                 gene=gene,
@@ -802,44 +936,52 @@ class GeneKnowledgeProvider:
                     if drug_info["type"] == "benefit":
                         drug_name = drug_info["drug"]
                         # 检查药物是否在当前变异的获益药物列表中
-                        if drug_name and self._drug_field_matches_tips(drug_name, benefit_drugs):
+                        if drug_name and self._drug_field_matches_tips(
+                            drug_name, benefit_drugs
+                        ):
                             key = f"{gene}:{drug_name}:benefit"
                             if key not in seen_drugs:
                                 seen_drugs.add(key)
                                 # 构建标题 (如 "TP53：c.844C>T，p.R282W突变相应靶向药物")
                                 header = f"{gene}：{mutation_info}突变相应靶向药物"
-                                sections.append({
-                                    "gene": gene,
-                                    "mutation_info": mutation_info,
-                                    "header": header,
-                                    "drug_name": drug_name,
-                                    "drug_type": "benefit",
-                                    "drug_type_cn": "潜在获益药物",
-                                    "relation": drug_info.get("relation", ""),
-                                    "clinical": drug_info.get("clinical", ""),
-                                })
+                                sections.append(
+                                    {
+                                        "gene": gene,
+                                        "mutation_info": mutation_info,
+                                        "header": header,
+                                        "drug_name": drug_name,
+                                        "drug_type": "benefit",
+                                        "drug_type_cn": "潜在获益药物",
+                                        "relation": drug_info.get("relation", ""),
+                                        "clinical": drug_info.get("clinical", ""),
+                                    }
+                                )
 
             # 匹配慎用药物
             if caution_drugs and caution_drugs != "--":
                 for drug_info in drug_infos:
                     if drug_info["type"] == "caution":
                         drug_name = drug_info["drug"]
-                        if drug_name and self._drug_field_matches_tips(drug_name, caution_drugs):
+                        if drug_name and self._drug_field_matches_tips(
+                            drug_name, caution_drugs
+                        ):
                             key = f"{gene}:{drug_name}:caution"
                             if key not in seen_drugs:
                                 seen_drugs.add(key)
                                 # 构建标题 (如 "KRAS：c.34G>A，p.G12S突变相应负相关药物")
                                 header = f"{gene}：{mutation_info}突变相应负相关药物"
-                                sections.append({
-                                    "gene": gene,
-                                    "mutation_info": mutation_info,
-                                    "header": header,
-                                    "drug_name": drug_name,
-                                    "drug_type": "caution",
-                                    "drug_type_cn": "慎用药物",
-                                    "relation": drug_info.get("relation", ""),
-                                    "clinical": drug_info.get("clinical", ""),
-                                })
+                                sections.append(
+                                    {
+                                        "gene": gene,
+                                        "mutation_info": mutation_info,
+                                        "header": header,
+                                        "drug_name": drug_name,
+                                        "drug_type": "caution",
+                                        "drug_type_cn": "慎用药物",
+                                        "relation": drug_info.get("relation", ""),
+                                        "clinical": drug_info.get("clinical", ""),
+                                    }
+                                )
 
         return sections
 
@@ -874,10 +1016,12 @@ class GeneKnowledgeProvider:
 
             refs = self.get_references(gene)
             if refs:
-                result.append({
-                    "gene": gene,
-                    "references": refs[:max_per_gene],
-                })
+                result.append(
+                    {
+                        "gene": gene,
+                        "references": refs[:max_per_gene],
+                    }
+                )
 
         return result
 
@@ -934,8 +1078,7 @@ class GeneKnowledgeProvider:
         """
         flat_refs = self.build_all_references_flat(variants, max_per_gene)
         return [
-            {"number": i, "text": ref.strip()}
-            for i, ref in enumerate(flat_refs, 1)
+            {"number": i, "text": ref.strip()} for i, ref in enumerate(flat_refs, 1)
         ]
 
     def build_enriched_references(
@@ -966,7 +1109,7 @@ class GeneKnowledgeProvider:
             - nct_id: NCT ID（如适用）
             - source: 来源类型 ("cache", "api", "original")
         """
-        from reportgen.utils.reference_extractor import extract_pmids, extract_nct_ids
+        from reportgen.utils.reference_extractor import extract_nct_ids, extract_pmids
 
         # 1. 获取原始参考文献
         flat_refs = self.build_all_references_flat(variants, max_per_gene)
@@ -1010,7 +1153,9 @@ class GeneKnowledgeProvider:
                         )
                         if enriched_text:
                             result["text"] = enriched_text
-                            result["source"] = "api" if pubmed_service._dirty else "cache"
+                            result["source"] = (
+                                "api" if pubmed_service._dirty else "cache"
+                            )
 
             # 提取 NCT ID
             nct_ids = extract_nct_ids(ref_text)
@@ -1029,7 +1174,9 @@ class GeneKnowledgeProvider:
                         )
                         if enriched_text:
                             result["text"] = enriched_text
-                            result["source"] = "api" if clinicaltrials_service._dirty else "cache"
+                            result["source"] = (
+                                "api" if clinicaltrials_service._dirty else "cache"
+                            )
 
             results.append(result)
 
@@ -1052,7 +1199,7 @@ class GeneKnowledgeProvider:
         Returns:
             (pmids, nct_ids) 元组
         """
-        from reportgen.utils.reference_extractor import extract_pmids, extract_nct_ids
+        from reportgen.utils.reference_extractor import extract_nct_ids, extract_pmids
 
         all_pmids = []
         all_ncts = []

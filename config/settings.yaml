@@ -531,6 +531,13 @@ knowledge_bases:
       ref_content: "参考文献"
       ref_genes: "关联基因"
 
+  # 变异级一句话知识库（可选）：用于在“基因变异解析”中补充位点个性化的一句话（批注#27）
+  # 索引优先级：gene + p_hgvs，其次 gene + c_hgvs
+  variant_insights_db:
+    enabled: true
+    path: "data/knowledge_bases/processed/variant_insights_public.yaml"
+    format: "yaml"
+
   # 癌种重要基因列表（可选）：用于动态获取各癌种的重要基因列表
   # 解决批注#33：基因检测列表应根据癌种动态生成（301/358区分）
   cancer_type_genes:

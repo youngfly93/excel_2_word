@@ -1,0 +1,18 @@
+schema_version: "1.0"
+
+# Variant-level one-liners (public / sample)
+# - Keyed by (gene, p_hgvs) first; falls back to (gene, c_hgvs)
+# - Keep content general and non-patient-specific.
+
+variant_insights:
+  - gene: "TP53"
+    p_hgvs: "p.R282W"
+    text: "TP53 p.R282W 为常见热点错义突变，位于 DNA 结合结构域，可能削弱对靶基因的转录调控能力。"
+
+  - gene: "KRAS"
+    p_hgvs: "p.G12D"
+    text: "KRAS p.G12D 为经典热点突变，可导致 RAS/MAPK 信号通路持续激活。"
+
+  - gene: "BRAF"
+    p_hgvs: "p.V600E"
+    text: "BRAF p.V600E 为经典激活性热点突变，可导致 MAPK 信号通路异常激活。"
