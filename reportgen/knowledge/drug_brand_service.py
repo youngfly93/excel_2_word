@@ -25,6 +25,7 @@ class DrugBrandService:
         """
         self._config_path = config_path
         self._loaded = False
+        self._loaded_from: Optional[str] = None
         self._drug_mappings: Dict[str, Dict[str, Any]] = {}
 
     def load(self, base_path: Optional[str] = None) -> None:
@@ -34,21 +35,30 @@ class DrugBrandService:
         Args:
             base_path: 基础路径（用于定位配置文件）
         """
-        if self._loaded:
-            return
-
         config_path = self._config_path
         if not config_path:
             if base_path:
                 config_path = os.path.join(base_path, "config", "drug_brand_names.yaml")
             else:
                 config_path = os.path.join(
-                    os.path.dirname(__file__), "..", "..", "config", "drug_brand_names.yaml"
+                    os.path.dirname(__file__),
+                    "..",
+                    "..",
+                    "config",
+                    "drug_brand_names.yaml",
                 )
 
+        config_path = os.path.abspath(config_path)
+
+        # Allow re-loading when callers pass different base_path/config_path.
+        if self._loaded and self._loaded_from == config_path:
+            return
+
         if not os.path.exists(config_path):
-            # 配置文件不存在时静默返回
-            self._loaded = True
+            # 配置文件不存在时静默返回（不覆盖既有映射，避免单例被“空路径”污染）
+            if not self._drug_mappings:
+                self._loaded = True
+                self._loaded_from = config_path
             return
 
         try:
@@ -56,13 +66,22 @@ class DrugBrandService:
                 data = yaml.safe_load(f) or {}
 
             # 合并所有药物类别
-            for category in ["targeted_drugs", "immunotherapy_drugs", "chemotherapy_drugs"]:
+            merged: Dict[str, Dict[str, Any]] = {}
+            for category in [
+                "targeted_drugs",
+                "immunotherapy_drugs",
+                "chemotherapy_drugs",
+            ]:
                 if category in data:
-                    self._drug_mappings.update(data[category])
+                    merged.update(data[category] or {})
 
             self._loaded = True
+            self._loaded_from = config_path
+            if merged:
+                self._drug_mappings = merged
         except Exception:
             self._loaded = True
+            self._loaded_from = config_path
 
     def get_brand_info(self, generic_name: str) -> Optional[Dict[str, Any]]:
         """
@@ -114,10 +133,7 @@ class DrugBrandService:
         return brands[0] if brands else generic_name
 
     def format_drug_with_brand(
-        self,
-        drug_str: str,
-        include_generic: bool = True,
-        separator: str = "/"
+        self, drug_str: str, include_generic: bool = True, separator: str = "/"
     ) -> str:
         """
         格式化药物名称，添加商品名。
@@ -193,29 +209,31 @@ class DrugBrandService:
             gene = variant.get("gene", "")
 
             # 处理获益药物
-            benefit_drugs = variant.get("benefit_drugs", "") or variant.get("获益药物", "")
-            self._extract_drugs_to_summary(
-                benefit_drugs, "获益", gene, drug_summary
+            benefit_drugs = variant.get("benefit_drugs", "") or variant.get(
+                "获益药物", ""
             )
+            self._extract_drugs_to_summary(benefit_drugs, "获益", gene, drug_summary)
 
             # 处理慎用药物
-            caution_drugs = variant.get("caution_drugs", "") or variant.get("慎用药物", "")
-            self._extract_drugs_to_summary(
-                caution_drugs, "慎用", gene, drug_summary
+            caution_drugs = variant.get("caution_drugs", "") or variant.get(
+                "慎用药物", ""
             )
+            self._extract_drugs_to_summary(caution_drugs, "慎用", gene, drug_summary)
 
         # 转换为列表
         result = []
         for key, info in drug_summary.items():
-            result.append({
-                "generic_name": info["generic_name"],
-                "brand_name": info["brand_name"],
-                "generic_en": info.get("generic_en", ""),
-                "evidence_level": info.get("evidence_level", ""),
-                "drug_type": info["drug_type"],
-                "related_genes": sorted(info["related_genes"]),
-                "target": info.get("target", ""),
-            })
+            result.append(
+                {
+                    "generic_name": info["generic_name"],
+                    "brand_name": info["brand_name"],
+                    "generic_en": info.get("generic_en", ""),
+                    "evidence_level": info.get("evidence_level", ""),
+                    "drug_type": info["drug_type"],
+                    "related_genes": sorted(info["related_genes"]),
+                    "target": info.get("target", ""),
+                }
+            )
 
         # 按药物类型和通用名排序
         result.sort(key=lambda x: (x["drug_type"], x["generic_name"]))
@@ -253,7 +271,9 @@ class DrugBrandService:
                     summary[key] = {
                         "generic_name": name,
                         "brand_name": self.get_brand_name(name),
-                        "generic_en": brand_info.get("generic_en", "") if brand_info else "",
+                        "generic_en": (
+                            brand_info.get("generic_en", "") if brand_info else ""
+                        ),
                         "evidence_level": level,
                         "drug_type": drug_type,
                         "related_genes": {gene} if gene else set(),
@@ -261,7 +281,10 @@ class DrugBrandService:
                     }
                 else:
                     # 更新证据等级（取最高）
-                    if level and (not summary[key]["evidence_level"] or level < summary[key]["evidence_level"]):
+                    if level and (
+                        not summary[key]["evidence_level"]
+                        or level < summary[key]["evidence_level"]
+                    ):
                         summary[key]["evidence_level"] = level
                     # 添加相关基因
                     if gene:
