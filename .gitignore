@@ -101,3 +101,6 @@ config/patient_info.local.yaml
 /*.xlsx
 /*.docx
 /2025.*/
+
+# Archived templates (large files)
+templates/archive/
