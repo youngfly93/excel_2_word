@@ -27,7 +27,8 @@
 
 ```bash
 # 克隆项目
-cd /home/report/肠癌358基因
+git clone https://github.com/youngfly93/excel_2_word.git
+cd excel_2_word
 
 # 安装依赖
 pip install -r requirements.txt
@@ -42,14 +43,19 @@ pip install -e .
 # 生成单个报告
 reportgen generate --excel data/input/sample.xlsx --output data/output/
 
-# 批量处理
-reportgen batch --excel "data/input/*.xlsx" --output data/output/
+# 批量处理（脚本）
+python scripts/batch_generate_reports.py data/input data/output --auto-detect
 
-# 验证配置
-reportgen validate all
+# 一键诊断（依赖/模板契约/可选：带excel做口径校验）
+reportgen diagnose
+reportgen diagnose -e data/input/sample.xlsx
 
 # 查看帮助
 reportgen --help
+
+# 校验模板（变量/映射）
+reportgen validate -t templates/jinja2_template_358_v18.docx --show-vars
+reportgen validate -t templates/jinja2_template_358_v18.docx --check-mapping
 ```
 
 ### 配置
@@ -135,4 +141,62 @@ isort reportgen/
 ## 联系方式
 
 医疗报告团队
+
+## 部署方式（推荐：Linux 服务器/生产环境）
+
+> 本项目为 CLI 工具型应用，部署的核心是：准备 Python 环境 + 安装依赖 + 放置配置/模板 + 通过命令行运行。
+
+### 1) 准备环境
+
+- Python: 3.9+
+- 建议使用独立账号与虚拟环境（venv）
+
+### 2) 安装（生产安装建议）
+
+```bash
+git clone https://github.com/youngfly93/excel_2_word.git
+cd excel_2_word
+
+python3 -m venv .venv
+source .venv/bin/activate
+
+python -m pip install -U pip
+pip install -r requirements.txt
+
+# 生产建议使用非 editable 安装（锁定当次代码状态）
+pip install .
+```
+
+### 3) 配置与模板
+
+- 配置目录：`config/`
+- 默认模板：`templates/jinja2_template_358_v18.docx`
+- 输出目录建议提前创建：`data/output/`（或自定义）
+
+可先跑一遍自检：
+
+```bash
+reportgen diagnose
+```
+
+### 4) 运行（单份/批量）
+
+```bash
+# 单份
+reportgen generate -e /path/to/input.xlsx -o /path/to/output_dir
+
+# 自动识别项目类型并选模板
+reportgen generate -e /path/to/input.xlsx --auto-detect -o /path/to/output_dir
+
+# 批量（脚本）
+python scripts/batch_generate_reports.py /path/to/excels /path/to/output_dir --auto-detect
+```
+
+### 5) （可选）参考文献缓存预热
+
+如果你启用了基因知识库并希望减少在线请求，可预先把 PMID/NCT 信息拉到本地缓存（默认写入 `data/cache/`）：
+
+```bash
+python scripts/prefetch_references.py --input /path/to/gene_knowledge.xlsx
+```
 
