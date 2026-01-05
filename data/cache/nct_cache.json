@@ -1,0 +1,20 @@
+{
+  "NCT02576444": {
+    "nct_id": "NCT02576444",
+    "title": "A Phase II Study of the PARP Inhibitor Olaparib (AZD2281) Alone and in Combination With AZD1775, AZD5363, or AZD6738 in Advanced Solid Tumors",
+    "brief_title": "OLAParib COmbinations",
+    "status": "TERMINATED",
+    "phase": "PHASE2",
+    "sponsor": "Joseph Paul Eder",
+    "fetched_at": "2026-01-03T23:44:57.300071"
+  },
+  "NCT02286687": {
+    "nct_id": "NCT02286687",
+    "title": "Phase II Study of the PARP Inhibitor Talazoparib in Advanced Cancer Patients With Somatic Alterations in BRCA1/2, Mutations/Deletions in Other BRCA Pathway Genes and Germline Mutation in BRCA1/2 (Not Breast or Ovarian Cancer)",
+    "brief_title": "Talazoparib in Treating Patients With Recurrent, Refractory, Advanced, or Metastatic Cancers and Alterations in the BRCA Genes",
+    "status": "ACTIVE_NOT_RECRUITING",
+    "phase": "PHASE2",
+    "sponsor": "M.D. Anderson Cancer Center",
+    "fetched_at": "2026-01-05T00:45:10.498883"
+  }
+}

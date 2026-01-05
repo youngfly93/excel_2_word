@@ -48,15 +48,10 @@ htmlcov/
 .DS_Store
 ._*
 
-# Project specific (默认忽略输入/输出/日志/缓存)
-data/input/
+# Project specific (只忽略生成的输出和日志)
 data/output/
 data/logs/
 output/
-data/cache/
-
-# Knowledge bases (downloaded raw sources can be large)
-data/knowledge_bases/
 
 # Test fixtures (large files)
 tests/fixtures/*.xlsx
@@ -100,7 +95,12 @@ config/patient_info.local.yaml
 # Root-level patient data files (should not be committed)
 /*.xlsx
 /*.docx
-/2025.*/
+
+# Unrelated project symlinks
+肺癌甲基化检测
+data_get.md
 
 # Archived templates (large files)
 templates/archive/
+# Temp Excel lock files
+~$*
