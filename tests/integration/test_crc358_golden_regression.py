@@ -31,9 +31,9 @@ def _write_min_gene_kb(path: Path) -> None:
         [
             {
                 "基因名称": "TP53",
-                "基因简介": "TP53 简介",
+                "基因简介": "TP53 简介 PMID:24857548",
                 "基因变异说明": "TP53 变异说明：{{ c_hgvs }}",
-                "基因变异解析": "TP53 变异解析示例",
+                "基因变异解析": "TP53 变异解析示例 (NCT04985721)",
             }
         ]
     )
@@ -44,9 +44,9 @@ def _write_min_gene_kb(path: Path) -> None:
             {
                 "基因名称": "TP53",
                 "潜在获益靶向/免疫药物解析": "AZD1775",
-                "获益_关联分析": "关联分析示例",
+                "获益_关联分析": "关联分析示例 PMID:24857548",
                 "获益_占位": "",
-                "获益_临床解析": "临床解析示例",
+                "获益_临床解析": "临床解析示例 NCT04985721",
                 "潜在负相关靶向/免疫药物解析": "",
                 "负相关_关联分析": "",
                 "负相关_占位": "",
@@ -203,7 +203,16 @@ def test_crc358_golden_regression(tmp_path: Path) -> None:
     gene_provider = GeneKnowledgeProvider(config=gene_kb_cfg)
 
     # 避免测试污染仓库缓存：把 enrichment cache 指向 tmp 目录
-    (tmp_path / "data" / "cache").mkdir(parents=True, exist_ok=True)
+    cache_dir = tmp_path / "data" / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    (cache_dir / "pubmed_cache.json").write_text(
+        """{\n  \"24857548\": {\n    \"pmid\": \"24857548\",\n    \"title\": \"Example TP53 paper\",\n    \"authors\": [],\n    \"journal\": \"\",\n    \"year\": \"\"\n  }\n}\n""",
+        encoding="utf-8",
+    )
+    (cache_dir / "nct_cache.json").write_text(
+        """{\n  \"NCT04985721\": {\n    \"nct_id\": \"NCT04985721\",\n    \"title\": \"Example TP53 trial\",\n    \"brief_title\": \"\",\n    \"status\": \"\",\n    \"phase\": \"\",\n    \"sponsor\": \"\"\n  }\n}\n""",
+        encoding="utf-8",
+    )
 
     report_data = enhance_report_data(
         report_data,
@@ -236,7 +245,11 @@ def test_crc358_golden_regression(tmp_path: Path) -> None:
     # --- 参考文献格式 ---
     refs = report_data.get_table("numbered_references")
     assert refs and refs[0].get("number") == 1
-    assert "TP53" in str(refs[0].get("text", ""))
+    assert "PMID:24857548" in str(refs[0].get("text", ""))
+    assert "Example TP53 paper" in str(refs[0].get("text", ""))
+    assert len(refs) >= 2
+    assert "NCT04985721" in str(refs[1].get("text", ""))
+    assert "https://clinicaltrials.gov." in str(refs[1].get("text", ""))
 
     # --- 位点个性化一句话（批注#27） ---
     sections = report_data.get_table("gene_knowledge_sections")

@@ -25,6 +25,7 @@ from reportgen.models.report_data import ReportData
 from reportgen.utils.hgvs_utils import infer_variant_type_cn
 from reportgen.knowledge import GeneKnowledgeProvider, CancerTypeGeneProvider
 from reportgen.services import PubMedService, ClinicalTrialsService
+from reportgen.utils.reference_extractor import extract_nct_ids, extract_pmids
 
 logger = logging.getLogger(__name__)
 
@@ -399,6 +400,99 @@ def build_marketed_drugs_brand_summary(
                 items.append(item)
 
     return "无。" if not items else "、".join(items) + "。"
+
+
+def collect_reference_ids_from_sections(
+    gene_knowledge_sections: List[Dict[str, Any]],
+    drug_analysis_sections: List[Dict[str, Any]],
+) -> Tuple[List[str], List[str]]:
+    """Collect PMID/NCT IDs from rendered gene/drug sections (批注#34)."""
+    pmids: List[str] = []
+    nct_ids: List[str] = []
+    seen_pmids: Set[str] = set()
+    seen_ncts: Set[str] = set()
+
+    def collect(text: Any) -> None:
+        if not text:
+            return
+        s = str(text)
+        for pmid in extract_pmids(s):
+            if pmid not in seen_pmids:
+                seen_pmids.add(pmid)
+                pmids.append(pmid)
+        for nct in extract_nct_ids(s):
+            if nct not in seen_ncts:
+                seen_ncts.add(nct)
+                nct_ids.append(nct)
+
+    for section in gene_knowledge_sections or []:
+        if not isinstance(section, dict):
+            continue
+        for key in ("intro", "mutation_analysis", "mutation_desc"):
+            collect(section.get(key))
+
+    for drug in drug_analysis_sections or []:
+        if not isinstance(drug, dict):
+            continue
+        for key in ("relation", "clinical"):
+            collect(drug.get(key))
+
+    return pmids, nct_ids
+
+
+def build_numbered_references_from_ids(
+    pmids: List[str],
+    nct_ids: List[str],
+    *,
+    pubmed_service: Optional[PubMedService] = None,
+    clinicaltrials_service: Optional[ClinicalTrialsService] = None,
+) -> List[Dict[str, Any]]:
+    """Build numbered references list from PMID/NCT IDs (批注#34)."""
+    numbered: List[Dict[str, Any]] = []
+    num = 1
+
+    for pmid in pmids:
+        text = f"PMID:{pmid}"
+        source = "original"
+        citation = None
+        if pubmed_service is not None:
+            try:
+                citation = pubmed_service.get_citation(pmid)
+            except Exception:
+                citation = None
+            if citation:
+                fmt = pubmed_service.format_citation(citation, style="simple")
+                if fmt:
+                    text = fmt.strip()
+                    source = "api" if getattr(pubmed_service, "_dirty", False) else "cache"
+
+        numbered.append(
+            {"number": num, "text": text, "pmid": pmid, "source": source, "raw": citation}
+        )
+        num += 1
+
+    for nct in nct_ids:
+        # Final report style: NCTxxxxxxx https://clinicaltrials.gov.
+        text = f"{nct} https://clinicaltrials.gov."
+        source = "original"
+        study = None
+
+        if clinicaltrials_service is not None:
+            try:
+                study = clinicaltrials_service.get_study(nct)
+            except Exception:
+                study = None
+            if study:
+                source = (
+                    "api" if getattr(clinicaltrials_service, "_dirty", False) else "cache"
+                )
+
+        numbered.append(
+            {"number": num, "text": text, "nct_id": nct, "source": source, "raw": study}
+        )
+        num += 1
+
+    return numbered
 
 
 def _build_variants_from_variation_rows(
@@ -1751,35 +1845,73 @@ def enhance_report_data(
             report_data.set_table("references_by_gene", references_by_gene)
 
             # Build numbered references for template (批注#34: 参考文献自动汇总)
-            # 使用 PubMed/ClinicalTrials 服务自动丰富参考文献信息
+            # 终版口径：统一收敛到 intro/analysis/drug 中出现的 PMID/NCT
             cache_dir = Path(base_path) / "data" / "cache" if base_path else Path("data/cache")
             pubmed_cache = cache_dir / "pubmed_cache.json"
             nct_cache = cache_dir / "nct_cache.json"
 
+            pubmed_service: Optional[PubMedService] = None
+            nct_service: Optional[ClinicalTrialsService] = None
             try:
                 pubmed_service = PubMedService(
                     cache_path=str(pubmed_cache) if pubmed_cache.parent.exists() else None,
-                    auto_save=True
+                    auto_save=True,
                 )
                 nct_service = ClinicalTrialsService(
                     cache_path=str(nct_cache) if nct_cache.parent.exists() else None,
-                    auto_save=True
-                )
-
-                # 使用丰富化的参考文献（自动从 PubMed/NCT 补全信息）
-                numbered_references = gene_knowledge_provider.build_enriched_references(
-                    variants=display_variants,
-                    pubmed_service=pubmed_service,
-                    clinicaltrials_service=nct_service,
-                    max_per_gene=5,
-                    enrich_missing=True
+                    auto_save=True,
                 )
             except Exception:
-                # 如果服务初始化失败，回退到基础方法
-                numbered_references = gene_knowledge_provider.build_numbered_references(
+                pubmed_service = None
+                nct_service = None
+
+            pmids, nct_ids = collect_reference_ids_from_sections(
+                gene_knowledge_sections, drug_analysis_sections
+            )
+
+            # 补充：从知识库/参考文献表中再收集一次，避免漏掉仅在 refs 中出现的 ID
+            try:
+                extra_pmids, extra_ncts = gene_knowledge_provider.collect_all_reference_ids(
                     variants=display_variants,
-                    max_per_gene=5
+                    include_drug_analysis=True,
                 )
+                for pmid in extra_pmids:
+                    if pmid not in pmids:
+                        pmids.append(pmid)
+                for nct in extra_ncts:
+                    if nct not in nct_ids:
+                        nct_ids.append(nct)
+            except Exception:
+                pass
+
+            if pmids or nct_ids:
+                numbered_references = build_numbered_references_from_ids(
+                    pmids,
+                    nct_ids,
+                    pubmed_service=pubmed_service,
+                    clinicaltrials_service=nct_service,
+                )
+            else:
+                # 回退：如果未能提取 PMID/NCT，则仍按原 references 表生成
+                try:
+                    if pubmed_service is not None or nct_service is not None:
+                        numbered_references = gene_knowledge_provider.build_enriched_references(
+                            variants=display_variants,
+                            pubmed_service=pubmed_service,
+                            clinicaltrials_service=nct_service,
+                            max_per_gene=5,
+                            enrich_missing=True,
+                        )
+                    else:
+                        numbered_references = gene_knowledge_provider.build_numbered_references(
+                            variants=display_variants,
+                            max_per_gene=5,
+                        )
+                except Exception:
+                    numbered_references = gene_knowledge_provider.build_numbered_references(
+                        variants=display_variants,
+                        max_per_gene=5,
+                    )
 
             report_data.set_table("numbered_references", numbered_references)
 
