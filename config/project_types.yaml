@@ -29,7 +29,7 @@ project_types:
           - "358基因"
           - {type: regex, pattern: "(^|\\D)358(\\D|$)"}
         weight: 1
-    template: "templates/jinja2_template_358_v9.docx"
+    template: "templates/jinja2_template_358_v18.docx"
     priority: 10
     panel_size: 358  # 检测基因数
     description: "结直肠癌358基因检测+微卫星不稳定性检测"
@@ -42,7 +42,7 @@ project_types:
         weight: 1
       - any: ["result"]
         weight: 1
-    template: "templates/jinja2_template_358_v9.docx"
+    template: "templates/jinja2_template_358_v18.docx"
     priority: 5
     description: "MLF系列基因检测结果报告"
 
@@ -61,7 +61,7 @@ project_types:
 # 默认配置
 default:
   # 无法识别项目类型时使用的默认模板
-  template: "templates/default_template.docx"
+  template: "templates/jinja2_template_358_v18.docx"
   
   # 关键词匹配阈值（0-1之间）
   match_threshold: 0.6
@@ -78,4 +78,3 @@ metadata:
   created_date: "2025-10-24"
   last_updated: "2025-10-24"
   description: "项目类型自动识别配置"
-
