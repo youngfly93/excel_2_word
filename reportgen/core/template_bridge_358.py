@@ -319,6 +319,88 @@ def _normalize_drug_tips_text(gene: str, drug_text: Any) -> str:
     return "\n".join(lines) if lines else "--"
 
 
+def build_marketed_drugs_brand_summary(
+    variants: List[Dict[str, Any]],
+    *,
+    base_path: Optional[str] = None,
+) -> str:
+    """
+    构建“已上市药物 + 商品名”汇总字符串（批注#7）。
+
+    口径：
+    - 仅统计 4 列汇总表（variants）中出现的获益/慎用药物
+    - 仅输出在 `config/drug_brand_names.yaml` 中有商品名映射的药物
+    - 输出格式：药物[商品名]、药物[商品名]。
+    """
+    if not variants:
+        return "无。"
+
+    # Lazy import: avoid YAML dependency if the feature isn't used.
+    from reportgen.knowledge.drug_brand_service import get_drug_brand_service
+
+    service = get_drug_brand_service()
+    service.load(base_path)
+
+    def _iter_drug_names(drug_text: Any) -> List[str]:
+        raw = "" if drug_text is None else str(drug_text)
+        raw = raw.strip()
+        if not raw or raw in {"--", "-", "*"}:
+            return []
+
+        parts: List[str] = []
+        for chunk in re.split(r"[\n\r]+", raw):
+            chunk = chunk.strip()
+            if not chunk:
+                continue
+            # 同一行可能包含多个药物（被空格拼接）
+            for tok in re.split(r"[、,，;；\t ]+", chunk):
+                tok = tok.strip()
+                if not tok:
+                    continue
+                # 去掉证据等级（如：西妥昔单抗（C））
+                m = re.match(r"^(.+?)(?:[（(]([A-D])[)）])?$", tok)
+                name = m.group(1).strip() if m else tok
+                # 去掉括号内别名说明（保留主体名）
+                name = re.sub(r"（[^）]*）", "", name)
+                name = re.sub(r"\([^)]*\)", "", name)
+                name = name.strip()
+                if not name:
+                    continue
+                # 组合用药：拆分为单药
+                for sub in re.split(r"[+＋]", name):
+                    sub = sub.strip()
+                    if sub:
+                        parts.append(sub)
+
+        # 去重但保持顺序
+        seen: Set[str] = set()
+        uniq: List[str] = []
+        for x in parts:
+            if x not in seen:
+                seen.add(x)
+                uniq.append(x)
+        return uniq
+
+    seen_items: Set[str] = set()
+    items: List[str] = []
+    for v in variants:
+        for field in ("benefit_drugs", "caution_drugs"):
+            for drug_name in _iter_drug_names(v.get(field)):
+                info = service.get_brand_info(drug_name)
+                if not info or not info.get("brands"):
+                    continue
+                brand = service.get_brand_name(drug_name, prefer_chinese=True)
+                if not brand or brand == drug_name:
+                    continue
+                item = f"{drug_name}[{brand}]"
+                if item in seen_items:
+                    continue
+                seen_items.add(item)
+                items.append(item)
+
+    return "无。" if not items else "、".join(items) + "。"
+
+
 def _build_variants_from_variation_rows(
     variation_rows: List[Dict[str, Any]],
     *,
@@ -1530,6 +1612,11 @@ def enhance_report_data(
     # Build main variants table (批注#3: 只含癌种重要基因的Ⅰ类、Ⅱ类) ——用于第二部分 4 列汇总表/药物解析
     variants = [v for v in display_variants if v.get("gene_class") in {"Ⅰ类", "Ⅱ类"}]
     report_data.set_table("variants", variants)
+    # 批注#7：上表（4列汇总表）涉及的已上市药物+商品名汇总
+    report_data.set_field(
+        "marketed_drugs_brand_summary",
+        build_marketed_drugs_brand_summary(variants, base_path=base_path),
+    )
 
     summary_variants = build_summary_variants(display_variants)
     report_data.set_table("summary_variants", summary_variants)
