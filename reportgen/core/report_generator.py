@@ -13,6 +13,10 @@ from reportgen.core.excel_reader import ExcelReader
 from reportgen.core.field_mapper import FieldMapper
 from reportgen.core.data_cleaner import DataCleaner
 from reportgen.core.template_renderer import TemplateRenderer
+from reportgen.core.template_contract import (
+    TemplateContractValidator,
+    select_contract,
+)
 from reportgen.models.excel_data import ExcelDataSource
 from reportgen.models.report_data import ReportData
 from reportgen.utils.logger import get_logger
@@ -222,6 +226,68 @@ class ReportGenerator:
                         missing_fields=missing_important
                     )
 
+            # 4.5 模板契约校验：缺失变量/空表/统计不一致（严格模式阻断）
+            contract_settings = self.config_loader.get_setting(
+                "generation.contract_validation", {}
+            )
+            if isinstance(contract_settings, dict) and bool(
+                contract_settings.get("enabled", False)
+            ):
+                contract_file = str(
+                    contract_settings.get("config_file", "template_contracts.yaml")
+                )
+                contracts_cfg = self.config_loader.load_template_contracts_config(
+                    file_name=contract_file
+                )
+                contract = select_contract(contracts_cfg, template_file)
+                if isinstance(contract, dict) and contract:
+                    check_template_vars = bool(
+                        contract_settings.get("check_template_variables", True)
+                    )
+                    template_vars = None
+                    loop_item_vars = None
+                    if check_template_vars:
+                        template_vars = self.template_renderer.get_template_variables(template_file)
+                        loop_item_vars = self.template_renderer.get_template_loop_item_variables(
+                            template_file
+                        )
+                    validator = TemplateContractValidator(contract)
+                    violations = validator.validate(
+                        report_data, template_vars=template_vars, loop_item_vars=loop_item_vars
+                    )
+
+                    if violations:
+                        enforce_in_strict = bool(
+                            contract_settings.get("enforce_in_strict_mode", True)
+                        )
+                        warn_non_strict = bool(
+                            contract_settings.get("warn_in_non_strict_mode", True)
+                        )
+
+                        if strict_mode and enforce_in_strict:
+                            duration = time.time() - start_time
+                            errors = [v.message for v in violations]
+                            self.logger.error(
+                                "严格模式：模板契约校验失败，阻断生成",
+                                violations_count=len(errors),
+                                violations=errors[:10],
+                            )
+                            return {
+                                "success": False,
+                                "output_file": None,
+                                "duration": duration,
+                                "errors": errors,
+                                "warnings": report_data.validation_errors,
+                            }
+
+                        if warn_non_strict:
+                            for v in violations:
+                                report_data.add_validation_error(v.message)
+                            self.logger.warning(
+                                "模板契约校验发现问题（非严格模式不阻断）",
+                                violations_count=len(violations),
+                            )
+
             # 5. 生成输出文件名
             if not output_filename:
                 output_filename = self._generate_output_filename(excel_data, report_data)
@@ -247,7 +313,9 @@ class ReportGenerator:
             
             # 5. 渲染模板
             self.logger.log_event("template_rendering_started", output=output_path)
-            final_output = self.template_renderer.render(template_file, report_data, output_path)
+            final_output = self.template_renderer.render(
+                template_file, report_data, output_path, strict_undefined=strict_mode
+            )
             self.logger.log_event("template_rendering_completed", output=final_output)
             
             # 计算耗时

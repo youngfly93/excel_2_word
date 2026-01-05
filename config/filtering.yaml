@@ -51,6 +51,7 @@ variations:
       - "Missense"      # 错义突变：导致氨基酸改变
       - "Nonsense"      # 无义突变：导致提前终止
       - "Frameshift"    # 移码突变：改变阅读框
+      - "CDS-indel"     # 插入缺失：部分来源用此表示移码/框内Indel
       - "Splice"        # 剪接位点变异：影响RNA剪接
     # 功能/类型字段的可能列名
     function_columns:

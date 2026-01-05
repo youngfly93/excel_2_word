@@ -34,7 +34,7 @@ def test_generate_reuses_prefetched_excel_data(tmp_path):
         AssertionError("excel_reader.read should not be called when excel_data is provided")
     )
 
-    def stub_render(_template_path: str, _report_data, output_path: str) -> str:
+    def stub_render(_template_path: str, _report_data, output_path: str, **_kwargs) -> str:
         Path(output_path).write_bytes(b"dummy-docx")
         return output_path
 
@@ -54,4 +54,3 @@ def test_generate_reuses_prefetched_excel_data(tmp_path):
     assert result["success"] is True
     assert result["output_file"]
     assert Path(result["output_file"]).exists()
-

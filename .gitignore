@@ -48,17 +48,15 @@ htmlcov/
 .DS_Store
 ._*
 
-# Project specific
-data/input/*
-data/output/*
-data/logs/*
-!data/input/.gitkeep
-!data/output/.gitkeep
-!data/logs/.gitkeep
+# Project specific (默认忽略输入/输出/日志/缓存)
+data/input/
+data/output/
+data/logs/
+output/
+data/cache/
 
 # Knowledge bases (downloaded raw sources can be large)
-data/knowledge_bases/raw/*
-!data/knowledge_bases/raw/.gitkeep
+data/knowledge_bases/
 
 # Test fixtures (large files)
 tests/fixtures/*.xlsx
@@ -74,6 +72,13 @@ tests/fixtures/*.docx
 
 # Tool scratch/work dirs
 tools/_work/
+
+# Codex/agent work dirs
+.codex/
+.claude/
+.cursor/
+.specify/
+.benchmarks/
 
 # Performance profiling
 *.prof

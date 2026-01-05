@@ -1466,17 +1466,72 @@ def enhance_report_data(
     )
     report_data.set_table("all_variants", detected_variants)
 
-    # Build main variants table (批注#3: 只含重要基因的Ⅰ类、Ⅱ类)
-    variants = [
-        v
-        for v in detected_variants
-        if v.get("gene", "").upper() in CRC_IMPORTANT_GENES
-        and v.get("gene_class") in {"Ⅰ类", "Ⅱ类"}
-    ]
+    # --- “展示变异集合”口径收敛（用于对齐：2.1 九列表、计数、解析、参考文献） ---
+    display_cfg = {}
+    if field_mapper is not None and getattr(field_mapper, "config_loader", None) is not None:
+        try:
+            cfg = field_mapper.config_loader.get_setting("reports.crc358.display_variants", {})
+            if isinstance(cfg, dict):
+                display_cfg = cfg
+        except Exception:
+            display_cfg = {}
+
+    strategy = str(display_cfg.get("strategy", "cancer_type_genes_then_fallback")).strip()
+    cancer_type_genes_list: Optional[List[str]] = None
+
+    # 1) all_detected：展示全部检出变异（不按癌种重要基因收敛）
+    if strategy == "all_detected":
+        display_variants = list(detected_variants)
+        display_gene_set = {v.get("gene", "").upper() for v in display_variants if v.get("gene")}
+    else:
+        # 2) cancer_type_genes_then_fallback：优先用癌种重要基因清单；为空则回退
+        if cancer_type_gene_provider is not None:
+            try:
+                cancer_type_gene_provider.load(base_path)
+                cancer_type_for_genes = _norm_text(report_data.get_field("cancer_type"))
+                if not cancer_type_for_genes or cancer_type_for_genes in {"-", "--"}:
+                    project_name = _norm_text(report_data.get_field("project_name"))
+                    clinical_diagnosis = _norm_text(report_data.get_field("clinical_diagnosis"))
+                    for hint in [project_name, clinical_diagnosis]:
+                        if any(k in hint for k in ("结直肠", "结肠", "直肠", "肠")):
+                            cancer_type_for_genes = "肠癌"
+                            break
+
+                if cancer_type_for_genes:
+                    cancer_type_genes_list = cancer_type_gene_provider.get_genes_for_cancer(
+                        cancer_type_for_genes
+                    )
+            except Exception:
+                cancer_type_genes_list = None
+
+        fallback_genes = display_cfg.get("fallback_genes", []) or []
+        if isinstance(fallback_genes, str):
+            fallback_genes = [fallback_genes]
+        base_genes = cancer_type_genes_list or [str(g) for g in fallback_genes] or CRC_IMPORTANT_GENES
+        display_gene_set = {str(g).upper() for g in base_genes if str(g).strip()}
+
+        # 常见别名兜底：模板/数据库可能用别名
+        aliases = display_cfg.get("aliases", {}) or {}
+        if isinstance(aliases, dict) and aliases:
+            for k, vals in aliases.items():
+                key = str(k).upper()
+                if key in display_gene_set:
+                    if isinstance(vals, str):
+                        vals = [vals]
+                    for v in vals or []:
+                        vv = str(v).upper().strip()
+                        if vv:
+                            display_gene_set.add(vv)
+
+        display_variants = [
+            v for v in detected_variants if v.get("gene", "").upper() in display_gene_set
+        ]
+
+    # Build main variants table (批注#3: 只含癌种重要基因的Ⅰ类、Ⅱ类) ——用于第二部分 4 列汇总表/药物解析
+    variants = [v for v in display_variants if v.get("gene_class") in {"Ⅰ类", "Ⅱ类"}]
     report_data.set_table("variants", variants)
 
-    # Build summary variants (批注#19: Ⅲ类加"意义未明突变"标注)
-    summary_variants = build_summary_variants(detected_variants)
+    summary_variants = build_summary_variants(display_variants)
     report_data.set_table("summary_variants", summary_variants)
 
     # Build NCCN table variables (section 2.3)
@@ -1544,7 +1599,7 @@ def enhance_report_data(
 
     # Statistics fields (v8 template variables)
     # total_variants_count: 总变异数（all_variants包含Ⅰ/Ⅱ/Ⅲ类）
-    report_data.set_field("total_variants_count", len(detected_variants))
+    report_data.set_field("total_variants_count", len(display_variants))
 
     # drug_related_count: 药物相关变异数
     report_data.set_field("drug_related_count", count_drug_related_variants(variants))
@@ -1553,31 +1608,7 @@ def enhance_report_data(
     report_data.set_field("panel_gene_count", get_panel_size(excel_data))
 
     # Build undetected genes (批注#33: 根据癌种动态生成基因检测列表)
-    detected_genes = {v["gene"] for v in detected_variants}
-    cancer_type_genes_list: Optional[List[str]] = None
-
-    # 尝试从 CancerTypeGeneProvider 获取癌种特异性基因列表
-    if cancer_type_gene_provider is not None:
-        try:
-            cancer_type_gene_provider.load(base_path)
-            # 获取癌种名称（优先使用已解析的cancer_type字段）
-            cancer_type_for_genes = _norm_text(report_data.get_field("cancer_type"))
-            if not cancer_type_for_genes or cancer_type_for_genes in {"-", "--"}:
-                # 回退：从项目名称或临床诊断推断
-                project_name = _norm_text(report_data.get_field("project_name"))
-                clinical_diagnosis = _norm_text(report_data.get_field("clinical_diagnosis"))
-                for hint in [project_name, clinical_diagnosis]:
-                    if any(k in hint for k in ("结直肠", "结肠", "直肠", "肠")):
-                        cancer_type_for_genes = "肠癌"
-                        break
-
-            if cancer_type_for_genes:
-                cancer_type_genes_list = cancer_type_gene_provider.get_genes_for_cancer(
-                    cancer_type_for_genes
-                )
-        except Exception:
-            # 加载失败时静默回退到默认列表
-            pass
+    detected_genes = {v["gene"] for v in display_variants}
 
     undetected_genes = build_undetected_genes(
         detected_genes,
@@ -1604,9 +1635,9 @@ def enhance_report_data(
             gene_knowledge_provider.load(base_path)
 
             # Build knowledge sections for all detected variants
-            # Use detected_variants to include all detected mutations (终版口径)
+            # 使用 display_variants（癌种重要基因范围）与 2.1 表格口径对齐，避免生成超大章节
             gene_knowledge_sections = gene_knowledge_provider.build_all_gene_knowledge_sections(
-                variants=detected_variants,
+                variants=display_variants,
                 cancer_type="结直肠癌"
             )
             report_data.set_table("gene_knowledge_sections", gene_knowledge_sections)
@@ -1620,14 +1651,14 @@ def enhance_report_data(
 
             # Build references (参考文献)
             references = gene_knowledge_provider.build_all_references_flat(
-                variants=detected_variants,
+                variants=display_variants,
                 max_per_gene=5
             )
             report_data.set_table("references", references)
 
             # Also provide grouped references by gene
             references_by_gene = gene_knowledge_provider.build_references(
-                variants=detected_variants,
+                variants=display_variants,
                 max_per_gene=5
             )
             report_data.set_table("references_by_gene", references_by_gene)
@@ -1650,7 +1681,7 @@ def enhance_report_data(
 
                 # 使用丰富化的参考文献（自动从 PubMed/NCT 补全信息）
                 numbered_references = gene_knowledge_provider.build_enriched_references(
-                    variants=detected_variants,
+                    variants=display_variants,
                     pubmed_service=pubmed_service,
                     clinicaltrials_service=nct_service,
                     max_per_gene=5,
@@ -1659,7 +1690,7 @@ def enhance_report_data(
             except Exception:
                 # 如果服务初始化失败，回退到基础方法
                 numbered_references = gene_knowledge_provider.build_numbered_references(
-                    variants=detected_variants,
+                    variants=display_variants,
                     max_per_gene=5
                 )
 
@@ -1699,6 +1730,8 @@ def enhance_report_data(
         sample_date = _format_date_yyyymmdd(raw)
         if sample_date:
             report_data.set_field("sample_date", sample_date)
+        else:
+            report_data.set_field("sample_date", "-")
 
     # 参考文献：即使知识库未加载，也保证模板变量存在（空列表即可安全渲染）
     if not report_data.has_table("references"):

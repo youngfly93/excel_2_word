@@ -1,0 +1,50 @@
+# 模板契约配置（Template Contracts）
+#
+# 用途：
+# - 严格模式下：缺失变量/关键表格为空/关键统计不一致时直接失败并给出清单
+# - 非严格模式下：记录为 warning（由调用方决定是否阻断）
+#
+# 说明：
+# - template_globs 以文件名或相对路径匹配（fnmatch 风格），用于选择对应契约
+# - optional_template_vars 用于允许模板中出现但上下文可能不提供的“可选变量”
+
+schema_version: "1.0"
+
+contracts:
+  - id: "crc358_v18"
+    template_globs:
+      - "jinja2_template_358_v18.docx"
+      - "templates/jinja2_template_358_v18.docx"
+
+    # 严格要求存在且非空的字段（最小集合；更多字段请用 mapping 的 required 或另外扩展 checks）
+    required_fields:
+      - "patient_name"
+      - "sample_id"
+
+    # 允许缺失的模板变量（可按需追加）
+    optional_template_vars: []
+
+    # 关键一致性/空表校验
+    checks:
+      # 2.1 九列表：统计应与行数一致
+      - type: "count_equals_table_len"
+        field: "total_variants_count"
+        table: "summary_variants"
+
+      # 2.1 九列表：当统计>0 时不应为空
+      - type: "nonempty_table_if_field_gt"
+        table: "summary_variants"
+        field: "total_variants_count"
+        threshold: 0
+
+      # 药物解析：当药物相关计数>0 时不应为空
+      - type: "nonempty_table_if_field_gt"
+        table: "drug_analysis_sections"
+        field: "drug_related_count"
+        threshold: 0
+
+      # 参考文献：编号连续、内容非空
+      - type: "reference_numbering"
+        table: "numbered_references"
+        number_key: "number"
+        text_key: "text"

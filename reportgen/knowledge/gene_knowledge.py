@@ -153,6 +153,59 @@ class GeneKnowledgeProvider:
             return ""
         return s
 
+    def _normalize_drug_list_text(self, value: Any) -> str:
+        """规范化“药物列表”字段文本，便于做包含匹配。"""
+        s = self._norm_text(value)
+        if not s:
+            return ""
+        s = s.replace("\n", " ")
+        # 去掉证据等级标注（如：AZD1775（C））
+        s = re.sub(r"[（(]\s*[A-D]\s*[）)]", "", s)
+        s = re.sub(r"\s+", " ", s).strip()
+        return s
+
+    def _extract_drug_candidates(self, drug_field: str) -> List[str]:
+        """从知识库药物字段中提取可匹配的候选药物名。"""
+        raw = self._norm_text(drug_field)
+        if not raw:
+            return []
+        parts = re.split(r"[、,，;；\n]+", raw)
+        out: List[str] = []
+        for p in parts:
+            p = p.strip()
+            if not p:
+                continue
+            # 去掉括号/方括号内的别名说明（保留主体名称）
+            base = re.sub(r"（[^）]*）", "", p)
+            base = re.sub(r"\([^)]*\)", "", base)
+            base = re.sub(r"\[[^\]]*\]", "", base).strip()
+            if base:
+                out.append(base)
+            # 组合用药：同时加入拆分后的子项
+            if "+" in base:
+                for sub in base.split("+"):
+                    sub = sub.strip()
+                    if sub:
+                        out.append(sub)
+        # 去重但保持大致顺序
+        seen = set()
+        uniq = []
+        for x in out:
+            if x not in seen:
+                seen.add(x)
+                uniq.append(x)
+        return uniq
+
+    def _drug_field_matches_tips(self, drug_field: str, tips: str) -> bool:
+        """判断知识库中的药物字段是否出现在报告药物提示列表中。"""
+        tips_norm = self._normalize_drug_list_text(tips)
+        if not tips_norm:
+            return False
+        for cand in self._extract_drug_candidates(drug_field):
+            if cand and cand in tips_norm:
+                return True
+        return False
+
     def _build_gene_analysis_cache(self, columns: Dict) -> None:
         """构建基因分析缓存"""
         if self._gene_analysis_df is None:
@@ -469,7 +522,26 @@ class GeneKnowledgeProvider:
         """
         if not self._loaded:
             self.load()
-        return self._gene_transcript_cache.get(gene.upper(), {})
+
+        gene_upper = (gene or "").upper()
+        info = self._gene_transcript_cache.get(gene_upper)
+        if info:
+            return info
+
+        # 常见别名兜底（模板/数据库可能使用别名）
+        aliases = {
+            "HER2": "ERBB2",
+        }
+        alias = aliases.get(gene_upper)
+        if not alias:
+            return {}
+
+        aliased = self._gene_transcript_cache.get(alias)
+        if not aliased:
+            return {}
+        out = dict(aliased)
+        out["name"] = gene_upper
+        return out
 
     def generate_mutation_description(
         self,
@@ -662,7 +734,7 @@ class GeneKnowledgeProvider:
                     if drug_info["type"] == "benefit":
                         drug_name = drug_info["drug"]
                         # 检查药物是否在当前变异的获益药物列表中
-                        if drug_name and drug_name in benefit_drugs:
+                        if drug_name and self._drug_field_matches_tips(drug_name, benefit_drugs):
                             key = f"{gene}:{drug_name}:benefit"
                             if key not in seen_drugs:
                                 seen_drugs.add(key)
@@ -684,7 +756,7 @@ class GeneKnowledgeProvider:
                 for drug_info in drug_infos:
                     if drug_info["type"] == "caution":
                         drug_name = drug_info["drug"]
-                        if drug_name and drug_name in caution_drugs:
+                        if drug_name and self._drug_field_matches_tips(drug_name, caution_drugs):
                             key = f"{gene}:{drug_name}:caution"
                             if key not in seen_drugs:
                                 seen_drugs.add(key)

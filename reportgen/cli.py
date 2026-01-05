@@ -235,6 +235,93 @@ def generate(ctx, excel, template, output, filename, strict, auto_detect):
 
 @cli.command()
 @click.option(
+    "--excel",
+    "-e",
+    required=False,
+    type=click.Path(exists=True),
+    help="Excel结果文件路径（可选：提供后会执行模板契约/口径校验）",
+)
+@click.option(
+    "--template",
+    "-t",
+    required=False,
+    default="templates/jinja2_template_358_v18.docx",
+    type=click.Path(exists=True),
+    help="Docx模板文件路径（默认: templates/jinja2_template_358_v18.docx）",
+)
+@click.pass_context
+def diagnose(ctx, excel, template):
+    """
+    一键诊断（依赖/引擎/模板契约）
+
+    示例:
+
+        reportgen diagnose
+
+        reportgen diagnose -e data/input/sample.xlsx
+    """
+    from reportgen.core.diagnose import run_diagnose
+
+    config_dir = ctx.obj["config_dir"]
+    log_file = ctx.obj["log_file"]
+    log_level = ctx.obj["log_level"]
+
+    click.echo("🧪 reportgen diagnose")
+    click.echo(f"📂 config_dir: {config_dir}")
+    click.echo(f"📄 template: {template}")
+    if excel:
+        click.echo(f"📊 excel: {excel}")
+    click.echo("")
+
+    result = run_diagnose(
+        config_dir=config_dir,
+        template_path=template,
+        excel_path=excel,
+        log_file=log_file,
+        log_level=log_level,
+    )
+
+    for line in result.summary:
+        if result.ok:
+            click.echo(f"✅ {line}")
+        else:
+            click.echo(f"❌ {line}")
+
+    details = result.details or {}
+    pkgs = details.get("packages", {}) or {}
+    click.echo("\n📦 依赖版本:")
+    for name in [
+        "pandas",
+        "openpyxl",
+        "docxtpl",
+        "python-docx",
+        "xlrd",
+        "jinja2",
+        "requests",
+        "urllib3",
+    ]:
+        click.echo(f"   - {name}: {pkgs.get(name) or 'missing'}")
+
+    contract = details.get("contract", {}) or {}
+    if contract.get("selected"):
+        click.echo(f"\n📜 契约: {contract.get('selected')}")
+        violations = contract.get("violations", []) or []
+        if violations:
+            click.echo(f"   ⚠️  违规: {len(violations)} 项")
+            for v in violations[:20]:
+                click.echo(f"      - {v}")
+            if len(violations) > 20:
+                click.echo(f"      ... 还有 {len(violations) - 20} 项")
+        else:
+            click.echo("   ✅ 无违规")
+    else:
+        click.echo("\n📜 契约: 未匹配（跳过契约校验）")
+
+    sys.exit(0 if result.ok else 1)
+
+
+@cli.command()
+@click.option(
     "--template",
     "-t",
     required=True,

@@ -30,7 +30,12 @@ class TemplateRenderer:
         self.logger = get_logger(log_file=log_file, level=log_level)
     
     def render(
-        self, template_path: str, report_data: ReportData, output_path: str
+        self,
+        template_path: str,
+        report_data: ReportData,
+        output_path: str,
+        *,
+        strict_undefined: bool = False,
     ) -> str:
         """
         渲染模板并保存
@@ -80,7 +85,18 @@ class TemplateRenderer:
             )
             
             # 渲染
-            doc.render(context)
+            if strict_undefined:
+                try:
+                    from jinja2 import Environment, StrictUndefined
+                except ModuleNotFoundError as e:
+                    raise ModuleNotFoundError(
+                        "缺少依赖 'jinja2'，无法启用严格模板变量校验"
+                    ) from e
+
+                jinja_env = Environment(undefined=StrictUndefined)
+                doc.render(context, jinja_env=jinja_env)
+            else:
+                doc.render(context)
             
             # 保存
             doc.save(output_path)
@@ -165,8 +181,11 @@ class TemplateRenderer:
                         single_vars = re.findall(r'\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)?)\s*\}\}', content)
                         variables.update(single_vars)
 
-                        # 提取 {% for item in list %} 中的list变量
-                        for_vars = re.findall(r'\{%\s*for\s+\w+\s+in\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*%\}', content)
+                        # 提取 {%(p|tr|tc)? for item in list %} 中的list变量（兼容 docxtpl 的 {%p/%tr 语法）
+                        for_vars = re.findall(
+                            r'\{%\s*\w*\s*for\s+\w+\s+in\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*%\}',
+                            content,
+                        )
                         variables.update(for_vars)
 
                         # 提取 row.xxx 格式（循环内的字段引用）
@@ -188,6 +207,48 @@ class TemplateRenderer:
         except Exception as e:
             self.logger.error("提取模板变量失败", template=template_path, error=str(e))
             return []
+
+    def get_template_loop_item_variables(self, template_path: str) -> set[str]:
+        """
+        获取模板中 for 循环的“迭代变量名”（如 row/ref/section/drug）。
+
+        兼容 docxtpl 的控制标签：
+        - {% for item in list %}
+        - {%p for item in list %}
+        - {%tr for item in list %}
+        """
+        import re
+        from zipfile import ZipFile
+
+        try:
+            loop_vars: set[str] = set()
+
+            with ZipFile(template_path, "r") as zf:
+                xml_files = [
+                    "word/document.xml",
+                    "word/header1.xml",
+                    "word/header2.xml",
+                    "word/footer1.xml",
+                    "word/footer2.xml",
+                ]
+
+                pattern = re.compile(
+                    r"\{%\s*\w*\s*for\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+in\s+([a-zA-Z_][a-zA-Z0-9_\.]*)\s*%\}"
+                )
+
+                for xml_file in xml_files:
+                    try:
+                        content = zf.read(xml_file).decode("utf-8")
+                    except KeyError:
+                        continue
+
+                    for m in pattern.finditer(content):
+                        loop_vars.add(m.group(1))
+
+            return loop_vars
+        except Exception as e:
+            self.logger.error("提取模板循环变量失败", template=template_path, error=str(e))
+            return set()
 
     def validate_template_variables(
         self,

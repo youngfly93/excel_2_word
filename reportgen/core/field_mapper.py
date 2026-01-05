@@ -62,6 +62,32 @@ class FieldMapper:
         self._immune_gene_list_loaded = False
         self._immune_gene_sets: dict[str, set[str]] = {}
 
+    @staticmethod
+    def _normalize_variation_class(value: Any) -> str:
+        """规范化变异分级字段（支持多种写法）。
+
+        说明：部分来源文件中 ExistIn552 可能为 0/1（布尔标记）而不是“Ⅰ类/Ⅱ类/Ⅲ类”。
+        这类值不应触发“分级过滤”，应交由后续频率/临床显著性策略决定。
+        """
+        if value is None:
+            return ""
+        s = str(value).strip().replace(" ", "")
+        if s.lower() in ("nan", "none", ""):
+            return ""
+
+        mapping = {
+            "I类": "Ⅰ类",
+            "II类": "Ⅱ类",
+            "III类": "Ⅲ类",
+            "1类": "Ⅰ类",
+            "2类": "Ⅱ类",
+            "3类": "Ⅲ类",
+            "Ⅰ": "Ⅰ类",
+            "Ⅱ": "Ⅱ类",
+            "Ⅲ": "Ⅲ类",
+        }
+        return mapping.get(s, s)
+
     def _build_single_value_mappings(self) -> Dict[str, FieldMapping]:
         """
         构建单值字段映射
@@ -485,9 +511,14 @@ class FieldMapper:
                         cls_val = row.get(col)
                         break
                 if cls_val is not None and allowed:
-                    cls_str = str(cls_val).strip()
-                    if cls_str and cls_str not in allowed:
-                        return False, "class_filtered"
+                    cls_str = self._normalize_variation_class(cls_val)
+                    if cls_str:
+                        # 仅当该字段看起来是“分级标签”（包含“类”）时才执行分级过滤，
+                        # 避免把 0/1 等布尔标记误判为分级值。
+                        if cls_str in allowed:
+                            pass
+                        elif "类" in cls_str:
+                            return False, "class_filtered"
 
             # === 智能过滤 ===
             is_high_freq = False
@@ -605,9 +636,12 @@ class FieldMapper:
                         cls_val = row.get(col)
                         break
                 if cls_val is not None and allowed:
-                    cls_str = str(cls_val).strip()
-                    if cls_str and cls_str not in allowed:
-                        return False
+                    cls_str = self._normalize_variation_class(cls_val)
+                    if cls_str:
+                        if cls_str in allowed:
+                            pass
+                        elif "类" in cls_str:
+                            return False
 
             # === 智能过滤 ===
             # 策略1: 频率过滤

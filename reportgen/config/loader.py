@@ -40,6 +40,7 @@ class ConfigLoader:
         self._project_types_config: Optional[Dict] = None
         self._settings_config: Optional[Dict] = None
         self._filtering_config: Optional[Dict] = None
+        self._template_contracts_config: Optional[Dict] = None
 
     def load_yaml(self, file_path: str) -> Dict[str, Any]:
         """
@@ -210,6 +211,40 @@ class ConfigLoader:
         self.logger.info("过滤配置加载成功")
 
         return config
+
+    def load_template_contracts_config(
+        self, reload: bool = False, *, file_name: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        加载模板契约配置（template_contracts.yaml）
+
+        Returns:
+            契约配置字典；不存在则返回空 dict。
+        """
+        if (
+            self._template_contracts_config is not None
+            and not reload
+            and (file_name is None or file_name == "template_contracts.yaml")
+        ):
+            return self._template_contracts_config
+
+        target_name = file_name or "template_contracts.yaml"
+        contract_file = self.config_dir / target_name
+        if not contract_file.exists():
+            if target_name == "template_contracts.yaml":
+                self._template_contracts_config = {}
+            return {}
+
+        try:
+            cfg = self.load_yaml(str(contract_file))
+            parsed = cfg if isinstance(cfg, dict) else {}
+            if target_name == "template_contracts.yaml":
+                self._template_contracts_config = parsed
+            return parsed
+        except Exception:
+            if target_name == "template_contracts.yaml":
+                self._template_contracts_config = {}
+            return {}
 
     def get_mapping_for_variable(
         self, variable_name: str, is_table: bool = False

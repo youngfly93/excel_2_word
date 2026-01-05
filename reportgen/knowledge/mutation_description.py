@@ -39,6 +39,128 @@ class MutationDescriptionGenerator:
         """初始化生成器"""
         pass
 
+    def _parse_c_hgvs(self, c_hgvs: str) -> Dict[str, Any]:
+        """
+        解析c.HGVS字符串（用于内部逻辑和测试）。
+
+        支持：substitution / deletion / insertion / duplication / delins
+        """
+        c_hgvs = (c_hgvs or "").strip()
+
+        # substitution: c.844C>T
+        match = re.match(r"c\.(\d+)([ATCG])>([ATCG])$", c_hgvs, re.I)
+        if match:
+            return {
+                "position": match.group(1),
+                "ref": match.group(2).upper(),
+                "alt": match.group(3).upper(),
+                "variant_type": "substitution",
+            }
+
+        # delins: c.1234_1236delinsATG
+        match = re.match(r"c\.(\d+)_(\d+)delins([ATCG]+)$", c_hgvs, re.I)
+        if match:
+            return {
+                "position": f"{match.group(1)}_{match.group(2)}",
+                "start": match.group(1),
+                "end": match.group(2),
+                "alt": match.group(3).upper(),
+                "variant_type": "delins",
+            }
+
+        # insertion: c.1234_1235insATG
+        match = re.match(r"c\.(\d+)_(\d+)ins([ATCG]+)$", c_hgvs, re.I)
+        if match:
+            return {
+                "position": f"{match.group(1)}_{match.group(2)}",
+                "start": match.group(1),
+                "end": match.group(2),
+                "alt": match.group(3).upper(),
+                "variant_type": "insertion",
+            }
+
+        # deletion: c.1234delA or c.2235_2249del
+        match = re.match(r"c\.(\d+)(?:_(\d+))?del([ATCG]*)$", c_hgvs, re.I)
+        if match:
+            start = match.group(1)
+            end = match.group(2)
+            position = start if not end else f"{start}_{end}"
+            deleted = match.group(3).upper() if match.group(3) else ""
+            payload: Dict[str, Any] = {
+                "position": position,
+                "start": start,
+                "variant_type": "deletion",
+            }
+            if end:
+                payload["end"] = end
+            if deleted:
+                payload["ref"] = deleted
+            return payload
+
+        # duplication: c.1234dupA or c.1234_1236dup
+        match = re.match(r"c\.(\d+)(?:_(\d+))?dup([ATCG]*)$", c_hgvs, re.I)
+        if match:
+            start = match.group(1)
+            end = match.group(2)
+            position = start if not end else f"{start}_{end}"
+            duplicated = match.group(3).upper() if match.group(3) else ""
+            payload = {
+                "position": position,
+                "start": start,
+                "variant_type": "duplication",
+            }
+            if end:
+                payload["end"] = end
+            if duplicated:
+                payload["alt"] = duplicated
+            return payload
+
+        return {"position": "", "variant_type": "unknown"}
+
+    def _parse_p_hgvs(self, p_hgvs: str) -> Dict[str, Any]:
+        """
+        解析p.HGVS字符串（用于内部逻辑和测试）。
+
+        支持：missense / nonsense / frameshift
+        """
+        p_hgvs = (p_hgvs or "").strip()
+
+        # frameshift: p.L300fs or p.Y796Wfs*2
+        match = re.match(r"p\.([A-Z\*])(\d+)([A-Z\*])?fs(?:\*(\d+))?$", p_hgvs, re.I)
+        if match:
+            payload: Dict[str, Any] = {
+                "position": match.group(2),
+                "ref_aa": match.group(1).upper(),
+                "mutation_type": "frameshift",
+            }
+            if match.group(3):
+                payload["alt_aa"] = match.group(3).upper()
+            if match.group(4):
+                payload["fs_stop"] = match.group(4)
+            return payload
+
+        # nonsense: p.R282*
+        match = re.match(r"p\.([A-Z])(\d+)\*$", p_hgvs, re.I)
+        if match:
+            return {
+                "position": match.group(2),
+                "ref_aa": match.group(1).upper(),
+                "alt_aa": "*",
+                "mutation_type": "nonsense",
+            }
+
+        # missense: p.R282W
+        match = re.match(r"p\.([A-Z])(\d+)([A-Z])$", p_hgvs, re.I)
+        if match:
+            return {
+                "position": match.group(2),
+                "ref_aa": match.group(1).upper(),
+                "alt_aa": match.group(3).upper(),
+                "mutation_type": "missense",
+            }
+
+        return {"position": "", "mutation_type": "unknown"}
+
     def generate(
         self,
         gene: str,
@@ -225,10 +347,10 @@ class MutationDescriptionGenerator:
         ins_match = re.match(r'c\.(\d+)_(\d+)ins([ATCG]+)', c_hgvs, re.I)
         dup_match = re.match(r'c\.(\d+)(?:_(\d+))?dup', c_hgvs, re.I)
 
-        # 解析 p.Y796Wfs*2 格式
-        fs_match = re.match(r'p\.([A-Z])(\d+)([A-Z])fs\*(\d+)', p_hgvs, re.I)
+        # 解析 p.Y796Wfs*2 / p.L1795fs 格式（alt/终止位点可选）
+        fs_match = re.match(r"p\.([A-Z])(\d+)([A-Z])?fs(?:\*(\d+))?$", p_hgvs, re.I)
 
-        if del_match and fs_match:
+        if del_match and fs_match and fs_match.group(3) and fs_match.group(4):
             c_start, c_end = int(del_match.group(1)), int(del_match.group(2))
             p_ref, p_pos, p_alt, fs_len = (
                 fs_match.group(1).upper(),
@@ -247,7 +369,7 @@ class MutationDescriptionGenerator:
                 f"此突变在样本中的突变丰度为{frequency:.2f}%。"
             )
 
-        if ins_match and fs_match:
+        if ins_match and fs_match and fs_match.group(3) and fs_match.group(4):
             c_start, c_end = int(ins_match.group(1)), int(ins_match.group(2))
             inserted = ins_match.group(3)
             p_ref, p_pos, p_alt, fs_len = (
@@ -267,7 +389,7 @@ class MutationDescriptionGenerator:
                 f"此突变在样本中的突变丰度为{frequency:.2f}%。"
             )
 
-        if dup_match and fs_match:
+        if dup_match and fs_match and fs_match.group(3) and fs_match.group(4):
             c_start = int(dup_match.group(1))
             c_end = int(dup_match.group(2)) if dup_match.group(2) else c_start
             p_ref, p_pos, p_alt, fs_len = (
@@ -287,7 +409,45 @@ class MutationDescriptionGenerator:
                 f"此突变在样本中的突变丰度为{frequency:.2f}%。"
             )
 
-        return self._generate_generic_desc(gene, c_hgvs, p_hgvs, frequency)
+        # 回退：无法完整解析终止位点等细节时，至少保证“移码”信息
+        if fs_match and (del_match or ins_match or dup_match):
+            p_ref = fs_match.group(1).upper()
+            p_pos = int(fs_match.group(2))
+            ref_aa_name = self._get_aa_name(p_ref)
+
+            if del_match:
+                c_start, c_end = int(del_match.group(1)), int(del_match.group(2))
+                return (
+                    f"该样本检出{gene}基因{c_hgvs}，{p_hgvs}碱基缺失引起的移码突变，"
+                    f"第{c_start}位至第{c_end}位核苷酸缺失，"
+                    f"导致相应蛋白序列中第{p_pos}位氨基酸{ref_aa_name}起发生移码，"
+                    f"此突变在样本中的突变丰度为{frequency:.2f}%。"
+                )
+
+            if ins_match:
+                c_start, c_end = int(ins_match.group(1)), int(ins_match.group(2))
+                inserted = ins_match.group(3)
+                return (
+                    f"该样本检出{gene}基因{c_hgvs}，{p_hgvs}碱基插入引起的移码突变，"
+                    f"第{c_start}位与第{c_end}位核苷酸之间插入{inserted}，"
+                    f"导致相应蛋白序列中第{p_pos}位氨基酸{ref_aa_name}起发生移码，"
+                    f"此突变在样本中的突变丰度为{frequency:.2f}%。"
+                )
+
+            # dup_match
+            c_start = int(dup_match.group(1))
+            c_end = int(dup_match.group(2)) if dup_match.group(2) else c_start
+            return (
+                f"该样本检出{gene}基因{c_hgvs}，{p_hgvs}碱基重复引起的移码突变，"
+                f"第{c_start}位至第{c_end}位核苷酸发生重复，"
+                f"导致相应蛋白序列中第{p_pos}位氨基酸{ref_aa_name}起发生移码，"
+                f"此突变在样本中的突变丰度为{frequency:.2f}%。"
+            )
+
+        return (
+            f"该样本检出{gene}基因{c_hgvs}，{p_hgvs}移码突变，"
+            f"此突变在样本中的突变丰度为{frequency:.2f}%。"
+        )
 
     def _generate_splice_desc(
         self, gene: str, c_hgvs: str, frequency: float

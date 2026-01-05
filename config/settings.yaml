@@ -199,6 +199,35 @@ generation:
     # 校验和算法
     checksum_algorithm: "md5"  # md5 / sha256
 
+  # 模板契约校验（严格模式强制）
+  contract_validation:
+    enabled: true
+    # 契约配置文件（相对 config_dir）
+    config_file: "template_contracts.yaml"
+    # 严格模式下：发现违规则阻断
+    enforce_in_strict_mode: true
+    # 非严格模式下：记录为 warning（不阻断）
+    warn_in_non_strict_mode: true
+    # 校验模板变量是否在上下文中提供（避免“空白但生成成功”）
+    check_template_variables: true
+
+# ---------- 报告口径（按项目类型） ----------
+reports:
+  # 结直肠癌358基因报告
+  crc358:
+    # “展示变异集合”定义：用于对齐 2.1 九列表、计数、基因解析、药物解析与参考文献口径
+    display_variants:
+      # 策略：
+      # - cancer_type_genes_then_fallback: 优先使用 knowledge_bases.cancer_type_genes 中的癌种基因清单；为空则回退
+      # - all_detected: 展示全部检出变异（不按癌种重要基因收敛）
+      strategy: "cancer_type_genes_then_fallback"
+      # 回退基因集合（为空时使用代码内置的 CRC_IMPORTANT_GENES）
+      fallback_genes: []
+      # 常见基因别名：用于展示集合与知识库/模板命名差异的兜底
+      aliases:
+        HER2: ["ERBB2"]
+        ERBB2: ["HER2"]
+
 # ---------- 日志设置 ----------
 logging:
   # 日志级别: DEBUG/INFO/WARNING/ERROR/CRITICAL
@@ -483,7 +512,7 @@ knowledge_bases:
   # 包含基因简介、基因变异解析、药物疗效临床解析、参考文献等
   gene_knowledge_db:
     enabled: true
-    path: "2025.12.10/自建肠癌基因数据库.xlsx"
+    path: "2025.12.10/示例：+++自建肠癌基因数据库.xlsx"
     sheets:
       # 基因变异解析sheet：包含基因简介、基因变异说明模板、基因变异解析
       gene_analysis: "基因变异解析"
